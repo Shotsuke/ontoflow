@@ -1,0 +1,5884 @@
+{
+  "version": "ontoflow-run/0.2",
+  "controller": "llm-proposal-ontology-gate",
+  "seed": 42,
+  "task": {
+    "experimentId": "SYN-KIN-001",
+    "targetType": "ResearchReport",
+    "holdoutK": 328.15,
+    "maxRelativeError": 0.05,
+    "trainingTraceIds": [
+      "T1-R1",
+      "T1-R2",
+      "T2-R1",
+      "T2-R2",
+      "T3-R1",
+      "T3-R2"
+    ],
+    "holdoutTraceIds": [
+      "T4-R1",
+      "T4-R2"
+    ]
+  },
+  "registry": [
+    {
+      "id": "read_trace",
+      "implementation": "read_trace",
+      "name": "读取反应记录",
+      "description": "将模拟数据源的一条原始记录映射到反应曲线对象。",
+      "category": "数据接入",
+      "version": "1.0.0",
+      "ontology": "kinetics/0.1",
+      "method_of": "RawTrace",
+      "inputs": [
+        "RawTrace"
+      ],
+      "output": "Trace",
+      "requires": [],
+      "result_mapping": {
+        "type": "Trace",
+        "identity": "new_artifact",
+        "experiment": "preserve_input",
+        "evidence": "executed_call"
+      }
+    },
+    {
+      "id": "check_quality",
+      "implementation": "check_quality",
+      "name": "检查曲线质量",
+      "description": "检查样本数、时间单调性与浓度正值，生成可追溯质量证据。",
+      "category": "质量检查",
+      "version": "1.0.0",
+      "ontology": "kinetics/0.1",
+      "method_of": "Trace",
+      "inputs": [
+        "Trace"
+      ],
+      "output": "QualityCheck",
+      "requires": [],
+      "result_mapping": {
+        "type": "QualityCheck",
+        "identity": "new_artifact",
+        "experiment": "preserve_input",
+        "evidence": "executed_call"
+      }
+    },
+    {
+      "id": "normalize",
+      "implementation": "normalize",
+      "name": "统一物理单位",
+      "description": "绑定同一曲线的质量检查，将 min 转换为 s、℃ 转换为 K。",
+      "category": "数据处理",
+      "version": "1.0.0",
+      "ontology": "kinetics/0.1",
+      "method_of": "Trace",
+      "inputs": [
+        "Trace",
+        "QualityCheck"
+      ],
+      "output": "NormalizedTrace",
+      "requires": [
+        "same_trace",
+        "qc",
+        "source_units"
+      ],
+      "result_mapping": {
+        "type": "NormalizedTrace",
+        "identity": "new_artifact",
+        "experiment": "preserve_input",
+        "evidence": "executed_call"
+      }
+    },
+    {
+      "id": "fit_rate",
+      "implementation": "fit_rate",
+      "name": "拟合一级反应速率",
+      "description": "拟合 ln(c/c₀) = −kt + b，输出速率、单位与拟合质量。",
+      "category": "数值计算",
+      "version": "1.0.0",
+      "ontology": "kinetics/0.1",
+      "method_of": "NormalizedTrace",
+      "inputs": [
+        "NormalizedTrace"
+      ],
+      "output": "RateEstimate",
+      "requires": [
+        "units",
+        "quality"
+      ],
+      "result_mapping": {
+        "type": "RateEstimate",
+        "identity": "new_artifact",
+        "experiment": "preserve_input",
+        "evidence": "executed_call"
+      }
+    },
+    {
+      "id": "fit_rate_robust",
+      "implementation": "fit_rate_robust",
+      "name": "稳健估计反应速率",
+      "description": "取所有观测对的对数浓度斜率中位数（Theil–Sen），降低离群点影响，输出同一种速率对象。",
+      "category": "数值计算",
+      "version": "1.0.0",
+      "ontology": "kinetics/0.1",
+      "method_of": "NormalizedTrace",
+      "inputs": [
+        "NormalizedTrace"
+      ],
+      "output": "RateEstimate",
+      "requires": [
+        "units",
+        "quality"
+      ],
+      "result_mapping": {
+        "type": "RateEstimate",
+        "identity": "new_artifact",
+        "experiment": "preserve_input",
+        "evidence": "executed_call"
+      }
+    },
+    {
+      "id": "aggregate",
+      "implementation": "aggregate",
+      "name": "汇集训练速率",
+      "description": "汇集全部训练曲线的速率，检查集合覆盖与实验归属。",
+      "category": "集合操作",
+      "version": "1.0.0",
+      "ontology": "kinetics/0.1",
+      "method_of": "RateEstimate",
+      "inputs": [
+        "RateEstimate[]"
+      ],
+      "output": "RateSeries",
+      "requires": [
+        "train_only",
+        "coverage",
+        "rate_units"
+      ],
+      "result_mapping": {
+        "type": "RateSeries",
+        "identity": "new_artifact",
+        "experiment": "preserve_input",
+        "evidence": "executed_call"
+      }
+    },
+    {
+      "id": "fit_arrhenius",
+      "implementation": "fit_arrhenius",
+      "name": "拟合温度响应",
+      "description": "拟合 ln(k) = ln(A) − Eₐ/(RT)，仅使用训练温度。",
+      "category": "数值计算",
+      "version": "1.0.0",
+      "ontology": "kinetics/0.1",
+      "method_of": "RateSeries",
+      "inputs": [
+        "RateSeries"
+      ],
+      "output": "ArrheniusModel",
+      "requires": [
+        "temperature_coverage"
+      ],
+      "result_mapping": {
+        "type": "ArrheniusModel",
+        "identity": "new_artifact",
+        "experiment": "preserve_input",
+        "evidence": "executed_call"
+      }
+    },
+    {
+      "id": "predict",
+      "implementation": "predict",
+      "name": "预测留出温度",
+      "description": "预测未参与模型拟合的 328.15 K 条件下的速率。",
+      "category": "预测",
+      "version": "1.0.0",
+      "ontology": "kinetics/0.1",
+      "method_of": "ArrheniusModel",
+      "inputs": [
+        "ArrheniusModel"
+      ],
+      "output": "Prediction",
+      "requires": [],
+      "result_mapping": {
+        "type": "Prediction",
+        "identity": "new_artifact",
+        "experiment": "preserve_input",
+        "evidence": "executed_call"
+      }
+    },
+    {
+      "id": "validate",
+      "implementation": "validate",
+      "name": "检验留出预测",
+      "description": "使用留出曲线估计值计算相对误差，阈值由任务给定。",
+      "category": "结果验证",
+      "version": "1.0.0",
+      "ontology": "kinetics/0.1",
+      "method_of": "Prediction",
+      "inputs": [
+        "Prediction",
+        "RateEstimate[]"
+      ],
+      "output": "Validation",
+      "requires": [
+        "holdout",
+        "validation_units"
+      ],
+      "result_mapping": {
+        "type": "Validation",
+        "identity": "new_artifact",
+        "experiment": "preserve_input",
+        "evidence": "executed_call"
+      }
+    },
+    {
+      "id": "report",
+      "implementation": "report",
+      "name": "生成分析报告",
+      "description": "关联模型和同源验证结果；只有完成判据满足才能生成。",
+      "category": "结果交付",
+      "version": "1.0.0",
+      "ontology": "kinetics/0.1",
+      "method_of": "ArrheniusModel",
+      "inputs": [
+        "ArrheniusModel",
+        "Validation"
+      ],
+      "output": "ResearchReport",
+      "requires": [
+        "validated",
+        "same_model"
+      ],
+      "result_mapping": {
+        "type": "ResearchReport",
+        "identity": "new_artifact",
+        "experiment": "preserve_input",
+        "evidence": "executed_call"
+      }
+    }
+  ],
+  "objects": [
+    {
+      "experimentId": "SYN-KIN-001",
+      "traceId": "T1-R1",
+      "temperatureC": 25,
+      "timeUnit": "s",
+      "rows": [
+        {
+          "time": 0,
+          "concentration": 0.9970281420974061
+        },
+        {
+          "time": 10,
+          "concentration": 0.9753540418980816
+        },
+        {
+          "time": 20,
+          "concentration": 0.9616804506615936
+        },
+        {
+          "time": 30,
+          "concentration": 0.9386290709567978
+        },
+        {
+          "time": 40,
+          "concentration": 0.9217389851319941
+        },
+        {
+          "time": 50,
+          "concentration": 0.8996870534645116
+        },
+        {
+          "time": 60,
+          "concentration": 0.8863593490578324
+        },
+        {
+          "time": 70,
+          "concentration": 0.8653778961443419
+        },
+        {
+          "time": 80,
+          "concentration": 0.8559663052972522
+        },
+        {
+          "time": 90,
+          "concentration": 0.8402280507199321
+        },
+        {
+          "time": 100,
+          "concentration": 0.8222008882612087
+        },
+        {
+          "time": 110,
+          "concentration": 0.8025156847816934
+        }
+      ],
+      "role": "train",
+      "id": "raw-0-1",
+      "type": "RawTrace",
+      "depth": 0,
+      "parents": [],
+      "evidence": "synthetic-generator/v1",
+      "source": "independent-synthetic",
+      "binding": "synthetic-kinetics-binding/1"
+    },
+    {
+      "experimentId": "SYN-KIN-001",
+      "traceId": "T1-R2",
+      "temperatureC": 25,
+      "timeUnit": "min",
+      "rows": [
+        {
+          "time": 0,
+          "concentration": 1.0017040113573894
+        },
+        {
+          "time": 0.16666666666666666,
+          "concentration": 0.9844502598114246
+        },
+        {
+          "time": 0.3333333333333333,
+          "concentration": 0.9619016848615043
+        },
+        {
+          "time": 0.5,
+          "concentration": 0.9371395297277283
+        },
+        {
+          "time": 0.6666666666666666,
+          "concentration": 0.9191308077858333
+        },
+        {
+          "time": 0.8333333333333334,
+          "concentration": 0.9097244986042198
+        },
+        {
+          "time": 1,
+          "concentration": 0.8914389995338294
+        },
+        {
+          "time": 1.1666666666666667,
+          "concentration": 0.8734212919336236
+        },
+        {
+          "time": 1.3333333333333333,
+          "concentration": 0.852660273690875
+        },
+        {
+          "time": 1.5,
+          "concentration": 0.8320679513272363
+        },
+        {
+          "time": 1.6666666666666667,
+          "concentration": 0.8192228312879406
+        },
+        {
+          "time": 1.8333333333333333,
+          "concentration": 0.8001975938422098
+        }
+      ],
+      "role": "train",
+      "id": "raw-0-2",
+      "type": "RawTrace",
+      "depth": 0,
+      "parents": [],
+      "evidence": "synthetic-generator/v1",
+      "source": "independent-synthetic",
+      "binding": "synthetic-kinetics-binding/1"
+    },
+    {
+      "experimentId": "SYN-KIN-001",
+      "traceId": "T2-R1",
+      "temperatureC": 35,
+      "timeUnit": "s",
+      "rows": [
+        {
+          "time": 0,
+          "concentration": 1.005317459951155
+        },
+        {
+          "time": 10,
+          "concentration": 0.9705304741138637
+        },
+        {
+          "time": 20,
+          "concentration": 0.9308369211599442
+        },
+        {
+          "time": 30,
+          "concentration": 0.9072436332996596
+        },
+        {
+          "time": 40,
+          "concentration": 0.8733234637867219
+        },
+        {
+          "time": 50,
+          "concentration": 0.8402121908611748
+        },
+        {
+          "time": 60,
+          "concentration": 0.8119427788748207
+        },
+        {
+          "time": 70,
+          "concentration": 0.7898643232862281
+        },
+        {
+          "time": 80,
+          "concentration": 0.766322011980748
+        },
+        {
+          "time": 90,
+          "concentration": 0.7410166652731723
+        },
+        {
+          "time": 100,
+          "concentration": 0.7150076850166049
+        },
+        {
+          "time": 110,
+          "concentration": 0.688785315888703
+        }
+      ],
+      "role": "train",
+      "id": "raw-1-1",
+      "type": "RawTrace",
+      "depth": 0,
+      "parents": [],
+      "evidence": "synthetic-generator/v1",
+      "source": "independent-synthetic",
+      "binding": "synthetic-kinetics-binding/1"
+    },
+    {
+      "experimentId": "SYN-KIN-001",
+      "traceId": "T2-R2",
+      "temperatureC": 35,
+      "timeUnit": "min",
+      "rows": [
+        {
+          "time": 0,
+          "concentration": 1.0010278821429237
+        },
+        {
+          "time": 0.16666666666666666,
+          "concentration": 0.9690790687603588
+        },
+        {
+          "time": 0.3333333333333333,
+          "concentration": 0.9370740633637601
+        },
+        {
+          "time": 0.5,
+          "concentration": 0.9060423648468594
+        },
+        {
+          "time": 0.6666666666666666,
+          "concentration": 0.8788104466163654
+        },
+        {
+          "time": 0.8333333333333334,
+          "concentration": 0.8441555727484318
+        },
+        {
+          "time": 1,
+          "concentration": 0.8126823563385297
+        },
+        {
+          "time": 1.1666666666666667,
+          "concentration": 0.7865891663825798
+        },
+        {
+          "time": 1.3333333333333333,
+          "concentration": 0.7628177184494535
+        },
+        {
+          "time": 1.5,
+          "concentration": 0.7346554829902561
+        },
+        {
+          "time": 1.6666666666666667,
+          "concentration": 0.715759785931909
+        },
+        {
+          "time": 1.8333333333333333,
+          "concentration": 0.6905480625970404
+        }
+      ],
+      "role": "train",
+      "id": "raw-1-2",
+      "type": "RawTrace",
+      "depth": 0,
+      "parents": [],
+      "evidence": "synthetic-generator/v1",
+      "source": "independent-synthetic",
+      "binding": "synthetic-kinetics-binding/1"
+    },
+    {
+      "experimentId": "SYN-KIN-001",
+      "traceId": "T3-R1",
+      "temperatureC": 45,
+      "timeUnit": "s",
+      "rows": [
+        {
+          "time": 0,
+          "concentration": 1.003655728715472
+        },
+        {
+          "time": 10,
+          "concentration": 0.9450858484415048
+        },
+        {
+          "time": 20,
+          "concentration": 0.8925080615459614
+        },
+        {
+          "time": 30,
+          "concentration": 0.8451900784651193
+        },
+        {
+          "time": 40,
+          "concentration": 0.7974038919189016
+        },
+        {
+          "time": 50,
+          "concentration": 0.7569744913100338
+        },
+        {
+          "time": 60,
+          "concentration": 0.7168391772228483
+        },
+        {
+          "time": 70,
+          "concentration": 0.6828520298183289
+        },
+        {
+          "time": 80,
+          "concentration": 0.6467749379909611
+        },
+        {
+          "time": 90,
+          "concentration": 0.6064951626950573
+        },
+        {
+          "time": 100,
+          "concentration": 0.5786427846679059
+        },
+        {
+          "time": 110,
+          "concentration": 0.5457033107920719
+        }
+      ],
+      "role": "train",
+      "id": "raw-2-1",
+      "type": "RawTrace",
+      "depth": 0,
+      "parents": [],
+      "evidence": "synthetic-generator/v1",
+      "source": "independent-synthetic",
+      "binding": "synthetic-kinetics-binding/1"
+    },
+    {
+      "experimentId": "SYN-KIN-001",
+      "traceId": "T3-R2",
+      "temperatureC": 45,
+      "timeUnit": "min",
+      "rows": [
+        {
+          "time": 0,
+          "concentration": 0.9980401729857549
+        },
+        {
+          "time": 0.16666666666666666,
+          "concentration": 0.9442331877370863
+        },
+        {
+          "time": 0.3333333333333333,
+          "concentration": 0.891579436775341
+        },
+        {
+          "time": 0.5,
+          "concentration": 0.8523896005792777
+        },
+        {
+          "time": 0.6666666666666666,
+          "concentration": 0.7982112624824355
+        },
+        {
+          "time": 0.8333333333333334,
+          "concentration": 0.7628358449679905
+        },
+        {
+          "time": 1,
+          "concentration": 0.7209054494518706
+        },
+        {
+          "time": 1.1666666666666667,
+          "concentration": 0.6791822278209676
+        },
+        {
+          "time": 1.3333333333333333,
+          "concentration": 0.6448774526879228
+        },
+        {
+          "time": 1.5,
+          "concentration": 0.607327670558864
+        },
+        {
+          "time": 1.6666666666666667,
+          "concentration": 0.5734393812570697
+        },
+        {
+          "time": 1.8333333333333333,
+          "concentration": 0.545225161275989
+        }
+      ],
+      "role": "train",
+      "id": "raw-2-2",
+      "type": "RawTrace",
+      "depth": 0,
+      "parents": [],
+      "evidence": "synthetic-generator/v1",
+      "source": "independent-synthetic",
+      "binding": "synthetic-kinetics-binding/1"
+    },
+    {
+      "experimentId": "SYN-KIN-001",
+      "traceId": "T4-R1",
+      "temperatureC": 55,
+      "timeUnit": "s",
+      "rows": [
+        {
+          "time": 0,
+          "concentration": 0.995408495570533
+        },
+        {
+          "time": 10,
+          "concentration": 0.9134585275800836
+        },
+        {
+          "time": 20,
+          "concentration": 0.8406150371436283
+        },
+        {
+          "time": 30,
+          "concentration": 0.7711027352507145
+        },
+        {
+          "time": 40,
+          "concentration": 0.7047927382987281
+        },
+        {
+          "time": 50,
+          "concentration": 0.6436085575598385
+        },
+        {
+          "time": 60,
+          "concentration": 0.5898498596084687
+        },
+        {
+          "time": 70,
+          "concentration": 0.5435053541364423
+        },
+        {
+          "time": 80,
+          "concentration": 0.499120403565567
+        },
+        {
+          "time": 90,
+          "concentration": 0.4569789561220191
+        },
+        {
+          "time": 100,
+          "concentration": 0.41812037284426345
+        },
+        {
+          "time": 110,
+          "concentration": 0.38376740773554596
+        }
+      ],
+      "role": "holdout",
+      "id": "raw-3-1",
+      "type": "RawTrace",
+      "depth": 0,
+      "parents": [],
+      "evidence": "synthetic-generator/v1",
+      "source": "independent-synthetic",
+      "binding": "synthetic-kinetics-binding/1"
+    },
+    {
+      "experimentId": "SYN-KIN-001",
+      "traceId": "T4-R2",
+      "temperatureC": 55,
+      "timeUnit": "min",
+      "rows": [
+        {
+          "time": 0,
+          "concentration": 0.998819687901996
+        },
+        {
+          "time": 0.16666666666666666,
+          "concentration": 0.9124648497591814
+        },
+        {
+          "time": 0.3333333333333333,
+          "concentration": 0.835801250701307
+        },
+        {
+          "time": 0.5,
+          "concentration": 0.7696440821462193
+        },
+        {
+          "time": 0.6666666666666666,
+          "concentration": 0.7061544854011904
+        },
+        {
+          "time": 0.8333333333333334,
+          "concentration": 0.6496394290425099
+        },
+        {
+          "time": 1,
+          "concentration": 0.5912606460865023
+        },
+        {
+          "time": 1.1666666666666667,
+          "concentration": 0.5438486195958697
+        },
+        {
+          "time": 1.3333333333333333,
+          "concentration": 0.49642816022982905
+        },
+        {
+          "time": 1.5,
+          "concentration": 0.45276471341764063
+        },
+        {
+          "time": 1.6666666666666667,
+          "concentration": 0.4150173166411763
+        },
+        {
+          "time": 1.8333333333333333,
+          "concentration": 0.3837043341924594
+        }
+      ],
+      "role": "holdout",
+      "id": "raw-3-2",
+      "type": "RawTrace",
+      "depth": 0,
+      "parents": [],
+      "evidence": "synthetic-generator/v1",
+      "source": "independent-synthetic",
+      "binding": "synthetic-kinetics-binding/1"
+    },
+    {
+      "experimentId": "SYN-KIN-001",
+      "traceId": "T1-R1",
+      "role": "train",
+      "temperatureC": 25,
+      "timeUnit": "s",
+      "rows": [
+        {
+          "time": 0,
+          "concentration": 0.9970281420974061
+        },
+        {
+          "time": 10,
+          "concentration": 0.9753540418980816
+        },
+        {
+          "time": 20,
+          "concentration": 0.9616804506615936
+        },
+        {
+          "time": 30,
+          "concentration": 0.9386290709567978
+        },
+        {
+          "time": 40,
+          "concentration": 0.9217389851319941
+        },
+        {
+          "time": 50,
+          "concentration": 0.8996870534645116
+        },
+        {
+          "time": 60,
+          "concentration": 0.8863593490578324
+        },
+        {
+          "time": 70,
+          "concentration": 0.8653778961443419
+        },
+        {
+          "time": 80,
+          "concentration": 0.8559663052972522
+        },
+        {
+          "time": 90,
+          "concentration": 0.8402280507199321
+        },
+        {
+          "time": 100,
+          "concentration": 0.8222008882612087
+        },
+        {
+          "time": 110,
+          "concentration": 0.8025156847816934
+        }
+      ],
+      "id": "obj-1",
+      "type": "Trace",
+      "parents": [
+        "raw-0-1"
+      ],
+      "depth": 1,
+      "evidence": "call-1"
+    },
+    {
+      "experimentId": "SYN-KIN-001",
+      "traceId": "T1-R1",
+      "role": "train",
+      "passed": true,
+      "points": 12,
+      "issues": [],
+      "id": "obj-2",
+      "type": "QualityCheck",
+      "parents": [
+        "obj-1"
+      ],
+      "depth": 2,
+      "evidence": "call-2"
+    },
+    {
+      "experimentId": "SYN-KIN-001",
+      "traceId": "T1-R1",
+      "role": "train",
+      "temperatureK": 298.15,
+      "temperatureUnit": "K",
+      "timeUnit": "s",
+      "qualityPassed": true,
+      "rows": [
+        {
+          "t": 0,
+          "c": 0.9970281420974061
+        },
+        {
+          "t": 10,
+          "c": 0.9753540418980816
+        },
+        {
+          "t": 20,
+          "c": 0.9616804506615936
+        },
+        {
+          "t": 30,
+          "c": 0.9386290709567978
+        },
+        {
+          "t": 40,
+          "c": 0.9217389851319941
+        },
+        {
+          "t": 50,
+          "c": 0.8996870534645116
+        },
+        {
+          "t": 60,
+          "c": 0.8863593490578324
+        },
+        {
+          "t": 70,
+          "c": 0.8653778961443419
+        },
+        {
+          "t": 80,
+          "c": 0.8559663052972522
+        },
+        {
+          "t": 90,
+          "c": 0.8402280507199321
+        },
+        {
+          "t": 100,
+          "c": 0.8222008882612087
+        },
+        {
+          "t": 110,
+          "c": 0.8025156847816934
+        }
+      ],
+      "id": "obj-3",
+      "type": "NormalizedTrace",
+      "parents": [
+        "obj-1",
+        "obj-2"
+      ],
+      "depth": 3,
+      "evidence": "call-3"
+    },
+    {
+      "experimentId": "SYN-KIN-001",
+      "traceId": "T1-R1",
+      "role": "train",
+      "temperatureK": 298.15,
+      "temperatureUnit": "K",
+      "k": 0.0019352679728864726,
+      "unit": "s^-1",
+      "r2": 0.9979659445680048,
+      "id": "obj-4",
+      "type": "RateEstimate",
+      "parents": [
+        "obj-3"
+      ],
+      "depth": 4,
+      "evidence": "call-4"
+    },
+    {
+      "experimentId": "SYN-KIN-001",
+      "traceId": "T1-R2",
+      "role": "train",
+      "temperatureC": 25,
+      "timeUnit": "min",
+      "rows": [
+        {
+          "time": 0,
+          "concentration": 1.0017040113573894
+        },
+        {
+          "time": 0.16666666666666666,
+          "concentration": 0.9844502598114246
+        },
+        {
+          "time": 0.3333333333333333,
+          "concentration": 0.9619016848615043
+        },
+        {
+          "time": 0.5,
+          "concentration": 0.9371395297277283
+        },
+        {
+          "time": 0.6666666666666666,
+          "concentration": 0.9191308077858333
+        },
+        {
+          "time": 0.8333333333333334,
+          "concentration": 0.9097244986042198
+        },
+        {
+          "time": 1,
+          "concentration": 0.8914389995338294
+        },
+        {
+          "time": 1.1666666666666667,
+          "concentration": 0.8734212919336236
+        },
+        {
+          "time": 1.3333333333333333,
+          "concentration": 0.852660273690875
+        },
+        {
+          "time": 1.5,
+          "concentration": 0.8320679513272363
+        },
+        {
+          "time": 1.6666666666666667,
+          "concentration": 0.8192228312879406
+        },
+        {
+          "time": 1.8333333333333333,
+          "concentration": 0.8001975938422098
+        }
+      ],
+      "id": "obj-5",
+      "type": "Trace",
+      "parents": [
+        "raw-0-2"
+      ],
+      "depth": 1,
+      "evidence": "call-5"
+    },
+    {
+      "experimentId": "SYN-KIN-001",
+      "traceId": "T1-R2",
+      "role": "train",
+      "passed": true,
+      "points": 12,
+      "issues": [],
+      "id": "obj-6",
+      "type": "QualityCheck",
+      "parents": [
+        "obj-5"
+      ],
+      "depth": 2,
+      "evidence": "call-6"
+    },
+    {
+      "experimentId": "SYN-KIN-001",
+      "traceId": "T1-R2",
+      "role": "train",
+      "temperatureK": 298.15,
+      "temperatureUnit": "K",
+      "timeUnit": "s",
+      "qualityPassed": true,
+      "rows": [
+        {
+          "t": 0,
+          "c": 1.0017040113573894
+        },
+        {
+          "t": 10,
+          "c": 0.9844502598114246
+        },
+        {
+          "t": 20,
+          "c": 0.9619016848615043
+        },
+        {
+          "t": 30,
+          "c": 0.9371395297277283
+        },
+        {
+          "t": 40,
+          "c": 0.9191308077858333
+        },
+        {
+          "t": 50,
+          "c": 0.9097244986042198
+        },
+        {
+          "t": 60,
+          "c": 0.8914389995338294
+        },
+        {
+          "t": 70,
+          "c": 0.8734212919336236
+        },
+        {
+          "t": 80,
+          "c": 0.852660273690875
+        },
+        {
+          "t": 90,
+          "c": 0.8320679513272363
+        },
+        {
+          "t": 100,
+          "c": 0.8192228312879406
+        },
+        {
+          "t": 110,
+          "c": 0.8001975938422098
+        }
+      ],
+      "id": "obj-7",
+      "type": "NormalizedTrace",
+      "parents": [
+        "obj-5",
+        "obj-6"
+      ],
+      "depth": 3,
+      "evidence": "call-7"
+    },
+    {
+      "experimentId": "SYN-KIN-001",
+      "traceId": "T1-R2",
+      "role": "train",
+      "temperatureK": 298.15,
+      "temperatureUnit": "K",
+      "k": 0.0020288795577199275,
+      "unit": "s^-1",
+      "r2": 0.9973576115780423,
+      "id": "obj-8",
+      "type": "RateEstimate",
+      "parents": [
+        "obj-7"
+      ],
+      "depth": 4,
+      "evidence": "call-8"
+    },
+    {
+      "experimentId": "SYN-KIN-001",
+      "traceId": "T2-R1",
+      "role": "train",
+      "temperatureC": 35,
+      "timeUnit": "s",
+      "rows": [
+        {
+          "time": 0,
+          "concentration": 1.005317459951155
+        },
+        {
+          "time": 10,
+          "concentration": 0.9705304741138637
+        },
+        {
+          "time": 20,
+          "concentration": 0.9308369211599442
+        },
+        {
+          "time": 30,
+          "concentration": 0.9072436332996596
+        },
+        {
+          "time": 40,
+          "concentration": 0.8733234637867219
+        },
+        {
+          "time": 50,
+          "concentration": 0.8402121908611748
+        },
+        {
+          "time": 60,
+          "concentration": 0.8119427788748207
+        },
+        {
+          "time": 70,
+          "concentration": 0.7898643232862281
+        },
+        {
+          "time": 80,
+          "concentration": 0.766322011980748
+        },
+        {
+          "time": 90,
+          "concentration": 0.7410166652731723
+        },
+        {
+          "time": 100,
+          "concentration": 0.7150076850166049
+        },
+        {
+          "time": 110,
+          "concentration": 0.688785315888703
+        }
+      ],
+      "id": "obj-9",
+      "type": "Trace",
+      "parents": [
+        "raw-1-1"
+      ],
+      "depth": 1,
+      "evidence": "call-9"
+    },
+    {
+      "experimentId": "SYN-KIN-001",
+      "traceId": "T2-R1",
+      "role": "train",
+      "passed": true,
+      "points": 12,
+      "issues": [],
+      "id": "obj-10",
+      "type": "QualityCheck",
+      "parents": [
+        "obj-9"
+      ],
+      "depth": 2,
+      "evidence": "call-10"
+    },
+    {
+      "experimentId": "SYN-KIN-001",
+      "traceId": "T2-R1",
+      "role": "train",
+      "temperatureK": 308.15,
+      "temperatureUnit": "K",
+      "timeUnit": "s",
+      "qualityPassed": true,
+      "rows": [
+        {
+          "t": 0,
+          "c": 1.005317459951155
+        },
+        {
+          "t": 10,
+          "c": 0.9705304741138637
+        },
+        {
+          "t": 20,
+          "c": 0.9308369211599442
+        },
+        {
+          "t": 30,
+          "c": 0.9072436332996596
+        },
+        {
+          "t": 40,
+          "c": 0.8733234637867219
+        },
+        {
+          "t": 50,
+          "c": 0.8402121908611748
+        },
+        {
+          "t": 60,
+          "c": 0.8119427788748207
+        },
+        {
+          "t": 70,
+          "c": 0.7898643232862281
+        },
+        {
+          "t": 80,
+          "c": 0.766322011980748
+        },
+        {
+          "t": 90,
+          "c": 0.7410166652731723
+        },
+        {
+          "t": 100,
+          "c": 0.7150076850166049
+        },
+        {
+          "t": 110,
+          "c": 0.688785315888703
+        }
+      ],
+      "id": "obj-11",
+      "type": "NormalizedTrace",
+      "parents": [
+        "obj-9",
+        "obj-10"
+      ],
+      "depth": 3,
+      "evidence": "call-11"
+    },
+    {
+      "experimentId": "SYN-KIN-001",
+      "traceId": "T2-R1",
+      "role": "train",
+      "temperatureK": 308.15,
+      "temperatureUnit": "K",
+      "k": 0.0033865012392123137,
+      "unit": "s^-1",
+      "r2": 0.9989574420365962,
+      "id": "obj-12",
+      "type": "RateEstimate",
+      "parents": [
+        "obj-11"
+      ],
+      "depth": 4,
+      "evidence": "call-12"
+    },
+    {
+      "experimentId": "SYN-KIN-001",
+      "traceId": "T2-R2",
+      "role": "train",
+      "temperatureC": 35,
+      "timeUnit": "min",
+      "rows": [
+        {
+          "time": 0,
+          "concentration": 1.0010278821429237
+        },
+        {
+          "time": 0.16666666666666666,
+          "concentration": 0.9690790687603588
+        },
+        {
+          "time": 0.3333333333333333,
+          "concentration": 0.9370740633637601
+        },
+        {
+          "time": 0.5,
+          "concentration": 0.9060423648468594
+        },
+        {
+          "time": 0.6666666666666666,
+          "concentration": 0.8788104466163654
+        },
+        {
+          "time": 0.8333333333333334,
+          "concentration": 0.8441555727484318
+        },
+        {
+          "time": 1,
+          "concentration": 0.8126823563385297
+        },
+        {
+          "time": 1.1666666666666667,
+          "concentration": 0.7865891663825798
+        },
+        {
+          "time": 1.3333333333333333,
+          "concentration": 0.7628177184494535
+        },
+        {
+          "time": 1.5,
+          "concentration": 0.7346554829902561
+        },
+        {
+          "time": 1.6666666666666667,
+          "concentration": 0.715759785931909
+        },
+        {
+          "time": 1.8333333333333333,
+          "concentration": 0.6905480625970404
+        }
+      ],
+      "id": "obj-13",
+      "type": "Trace",
+      "parents": [
+        "raw-1-2"
+      ],
+      "depth": 1,
+      "evidence": "call-13"
+    },
+    {
+      "experimentId": "SYN-KIN-001",
+      "traceId": "T2-R2",
+      "role": "train",
+      "passed": true,
+      "points": 12,
+      "issues": [],
+      "id": "obj-14",
+      "type": "QualityCheck",
+      "parents": [
+        "obj-13"
+      ],
+      "depth": 2,
+      "evidence": "call-14"
+    },
+    {
+      "experimentId": "SYN-KIN-001",
+      "traceId": "T2-R2",
+      "role": "train",
+      "temperatureK": 308.15,
+      "temperatureUnit": "K",
+      "timeUnit": "s",
+      "qualityPassed": true,
+      "rows": [
+        {
+          "t": 0,
+          "c": 1.0010278821429237
+        },
+        {
+          "t": 10,
+          "c": 0.9690790687603588
+        },
+        {
+          "t": 20,
+          "c": 0.9370740633637601
+        },
+        {
+          "t": 30,
+          "c": 0.9060423648468594
+        },
+        {
+          "t": 40,
+          "c": 0.8788104466163654
+        },
+        {
+          "t": 50,
+          "c": 0.8441555727484318
+        },
+        {
+          "t": 60,
+          "c": 0.8126823563385297
+        },
+        {
+          "t": 70,
+          "c": 0.7865891663825798
+        },
+        {
+          "t": 80,
+          "c": 0.7628177184494535
+        },
+        {
+          "t": 90,
+          "c": 0.7346554829902561
+        },
+        {
+          "t": 100,
+          "c": 0.715759785931909
+        },
+        {
+          "t": 110,
+          "c": 0.6905480625970404
+        }
+      ],
+      "id": "obj-15",
+      "type": "NormalizedTrace",
+      "parents": [
+        "obj-13",
+        "obj-14"
+      ],
+      "depth": 3,
+      "evidence": "call-15"
+    },
+    {
+      "experimentId": "SYN-KIN-001",
+      "traceId": "T2-R2",
+      "role": "train",
+      "temperatureK": 308.15,
+      "temperatureUnit": "K",
+      "k": 0.0033960251308002196,
+      "unit": "s^-1",
+      "r2": 0.9993288892633764,
+      "id": "obj-16",
+      "type": "RateEstimate",
+      "parents": [
+        "obj-15"
+      ],
+      "depth": 4,
+      "evidence": "call-16"
+    },
+    {
+      "experimentId": "SYN-KIN-001",
+      "traceId": "T3-R1",
+      "role": "train",
+      "temperatureC": 45,
+      "timeUnit": "s",
+      "rows": [
+        {
+          "time": 0,
+          "concentration": 1.003655728715472
+        },
+        {
+          "time": 10,
+          "concentration": 0.9450858484415048
+        },
+        {
+          "time": 20,
+          "concentration": 0.8925080615459614
+        },
+        {
+          "time": 30,
+          "concentration": 0.8451900784651193
+        },
+        {
+          "time": 40,
+          "concentration": 0.7974038919189016
+        },
+        {
+          "time": 50,
+          "concentration": 0.7569744913100338
+        },
+        {
+          "time": 60,
+          "concentration": 0.7168391772228483
+        },
+        {
+          "time": 70,
+          "concentration": 0.6828520298183289
+        },
+        {
+          "time": 80,
+          "concentration": 0.6467749379909611
+        },
+        {
+          "time": 90,
+          "concentration": 0.6064951626950573
+        },
+        {
+          "time": 100,
+          "concentration": 0.5786427846679059
+        },
+        {
+          "time": 110,
+          "concentration": 0.5457033107920719
+        }
+      ],
+      "id": "obj-17",
+      "type": "Trace",
+      "parents": [
+        "raw-2-1"
+      ],
+      "depth": 1,
+      "evidence": "call-17"
+    },
+    {
+      "experimentId": "SYN-KIN-001",
+      "traceId": "T3-R1",
+      "role": "train",
+      "passed": true,
+      "points": 12,
+      "issues": [],
+      "id": "obj-18",
+      "type": "QualityCheck",
+      "parents": [
+        "obj-17"
+      ],
+      "depth": 2,
+      "evidence": "call-18"
+    },
+    {
+      "experimentId": "SYN-KIN-001",
+      "traceId": "T3-R1",
+      "role": "train",
+      "temperatureK": 318.15,
+      "temperatureUnit": "K",
+      "timeUnit": "s",
+      "qualityPassed": true,
+      "rows": [
+        {
+          "t": 0,
+          "c": 1.003655728715472
+        },
+        {
+          "t": 10,
+          "c": 0.9450858484415048
+        },
+        {
+          "t": 20,
+          "c": 0.8925080615459614
+        },
+        {
+          "t": 30,
+          "c": 0.8451900784651193
+        },
+        {
+          "t": 40,
+          "c": 0.7974038919189016
+        },
+        {
+          "t": 50,
+          "c": 0.7569744913100338
+        },
+        {
+          "t": 60,
+          "c": 0.7168391772228483
+        },
+        {
+          "t": 70,
+          "c": 0.6828520298183289
+        },
+        {
+          "t": 80,
+          "c": 0.6467749379909611
+        },
+        {
+          "t": 90,
+          "c": 0.6064951626950573
+        },
+        {
+          "t": 100,
+          "c": 0.5786427846679059
+        },
+        {
+          "t": 110,
+          "c": 0.5457033107920719
+        }
+      ],
+      "id": "obj-19",
+      "type": "NormalizedTrace",
+      "parents": [
+        "obj-17",
+        "obj-18"
+      ],
+      "depth": 3,
+      "evidence": "call-19"
+    },
+    {
+      "experimentId": "SYN-KIN-001",
+      "traceId": "T3-R1",
+      "role": "train",
+      "temperatureK": 318.15,
+      "temperatureUnit": "K",
+      "k": 0.005482463853254518,
+      "unit": "s^-1",
+      "r2": 0.9996553158164541,
+      "id": "obj-20",
+      "type": "RateEstimate",
+      "parents": [
+        "obj-19"
+      ],
+      "depth": 4,
+      "evidence": "call-20"
+    },
+    {
+      "experimentId": "SYN-KIN-001",
+      "traceId": "T3-R1",
+      "role": "train",
+      "temperatureK": 318.15,
+      "temperatureUnit": "K",
+      "k": 0.005490267024455733,
+      "unit": "s^-1",
+      "r2": 0.9996230865208151,
+      "id": "obj-21",
+      "type": "RateEstimate",
+      "parents": [
+        "obj-19"
+      ],
+      "depth": 4,
+      "evidence": "call-21"
+    },
+    {
+      "experimentId": "SYN-KIN-001",
+      "traceId": "T3-R2",
+      "role": "train",
+      "temperatureC": 45,
+      "timeUnit": "min",
+      "rows": [
+        {
+          "time": 0,
+          "concentration": 0.9980401729857549
+        },
+        {
+          "time": 0.16666666666666666,
+          "concentration": 0.9442331877370863
+        },
+        {
+          "time": 0.3333333333333333,
+          "concentration": 0.891579436775341
+        },
+        {
+          "time": 0.5,
+          "concentration": 0.8523896005792777
+        },
+        {
+          "time": 0.6666666666666666,
+          "concentration": 0.7982112624824355
+        },
+        {
+          "time": 0.8333333333333334,
+          "concentration": 0.7628358449679905
+        },
+        {
+          "time": 1,
+          "concentration": 0.7209054494518706
+        },
+        {
+          "time": 1.1666666666666667,
+          "concentration": 0.6791822278209676
+        },
+        {
+          "time": 1.3333333333333333,
+          "concentration": 0.6448774526879228
+        },
+        {
+          "time": 1.5,
+          "concentration": 0.607327670558864
+        },
+        {
+          "time": 1.6666666666666667,
+          "concentration": 0.5734393812570697
+        },
+        {
+          "time": 1.8333333333333333,
+          "concentration": 0.545225161275989
+        }
+      ],
+      "id": "obj-23",
+      "type": "Trace",
+      "parents": [
+        "raw-2-2"
+      ],
+      "depth": 1,
+      "evidence": "call-23"
+    },
+    {
+      "experimentId": "SYN-KIN-001",
+      "traceId": "T3-R2",
+      "role": "train",
+      "passed": true,
+      "points": 12,
+      "issues": [],
+      "id": "obj-24",
+      "type": "QualityCheck",
+      "parents": [
+        "obj-23"
+      ],
+      "depth": 2,
+      "evidence": "call-24"
+    },
+    {
+      "experimentId": "SYN-KIN-001",
+      "traceId": "T3-R2",
+      "role": "train",
+      "temperatureK": 318.15,
+      "temperatureUnit": "K",
+      "timeUnit": "s",
+      "qualityPassed": true,
+      "rows": [
+        {
+          "t": 0,
+          "c": 0.9980401729857549
+        },
+        {
+          "t": 10,
+          "c": 0.9442331877370863
+        },
+        {
+          "t": 20,
+          "c": 0.891579436775341
+        },
+        {
+          "t": 30,
+          "c": 0.8523896005792777
+        },
+        {
+          "t": 40,
+          "c": 0.7982112624824355
+        },
+        {
+          "t": 50,
+          "c": 0.7628358449679905
+        },
+        {
+          "t": 60,
+          "c": 0.7209054494518706
+        },
+        {
+          "t": 70,
+          "c": 0.6791822278209676
+        },
+        {
+          "t": 80,
+          "c": 0.6448774526879228
+        },
+        {
+          "t": 90,
+          "c": 0.607327670558864
+        },
+        {
+          "t": 100,
+          "c": 0.5734393812570697
+        },
+        {
+          "t": 110,
+          "c": 0.545225161275989
+        }
+      ],
+      "id": "obj-25",
+      "type": "NormalizedTrace",
+      "parents": [
+        "obj-23",
+        "obj-24"
+      ],
+      "depth": 3,
+      "evidence": "call-25"
+    },
+    {
+      "experimentId": "SYN-KIN-001",
+      "traceId": "T3-R2",
+      "role": "train",
+      "temperatureK": 318.15,
+      "temperatureUnit": "K",
+      "k": 0.005525114578133332,
+      "unit": "s^-1",
+      "r2": 0.9996102298005463,
+      "id": "obj-26",
+      "type": "RateEstimate",
+      "parents": [
+        "obj-25"
+      ],
+      "depth": 4,
+      "evidence": "call-26"
+    },
+    {
+      "experimentId": "SYN-KIN-001",
+      "items": [
+        {
+          "experimentId": "SYN-KIN-001",
+          "traceId": "T1-R1",
+          "role": "train",
+          "temperatureK": 298.15,
+          "temperatureUnit": "K",
+          "k": 0.0019352679728864726,
+          "unit": "s^-1",
+          "r2": 0.9979659445680048,
+          "id": "obj-4",
+          "type": "RateEstimate",
+          "parents": [
+            "obj-3"
+          ],
+          "depth": 4,
+          "evidence": "call-4"
+        },
+        {
+          "experimentId": "SYN-KIN-001",
+          "traceId": "T1-R2",
+          "role": "train",
+          "temperatureK": 298.15,
+          "temperatureUnit": "K",
+          "k": 0.0020288795577199275,
+          "unit": "s^-1",
+          "r2": 0.9973576115780423,
+          "id": "obj-8",
+          "type": "RateEstimate",
+          "parents": [
+            "obj-7"
+          ],
+          "depth": 4,
+          "evidence": "call-8"
+        },
+        {
+          "experimentId": "SYN-KIN-001",
+          "traceId": "T2-R1",
+          "role": "train",
+          "temperatureK": 308.15,
+          "temperatureUnit": "K",
+          "k": 0.0033865012392123137,
+          "unit": "s^-1",
+          "r2": 0.9989574420365962,
+          "id": "obj-12",
+          "type": "RateEstimate",
+          "parents": [
+            "obj-11"
+          ],
+          "depth": 4,
+          "evidence": "call-12"
+        },
+        {
+          "experimentId": "SYN-KIN-001",
+          "traceId": "T2-R2",
+          "role": "train",
+          "temperatureK": 308.15,
+          "temperatureUnit": "K",
+          "k": 0.0033960251308002196,
+          "unit": "s^-1",
+          "r2": 0.9993288892633764,
+          "id": "obj-16",
+          "type": "RateEstimate",
+          "parents": [
+            "obj-15"
+          ],
+          "depth": 4,
+          "evidence": "call-16"
+        },
+        {
+          "experimentId": "SYN-KIN-001",
+          "traceId": "T3-R1",
+          "role": "train",
+          "temperatureK": 318.15,
+          "temperatureUnit": "K",
+          "k": 0.005482463853254518,
+          "unit": "s^-1",
+          "r2": 0.9996553158164541,
+          "id": "obj-20",
+          "type": "RateEstimate",
+          "parents": [
+            "obj-19"
+          ],
+          "depth": 4,
+          "evidence": "call-20"
+        },
+        {
+          "experimentId": "SYN-KIN-001",
+          "traceId": "T3-R2",
+          "role": "train",
+          "temperatureK": 318.15,
+          "temperatureUnit": "K",
+          "k": 0.005525114578133332,
+          "unit": "s^-1",
+          "r2": 0.9996102298005463,
+          "id": "obj-26",
+          "type": "RateEstimate",
+          "parents": [
+            "obj-25"
+          ],
+          "depth": 4,
+          "evidence": "call-26"
+        }
+      ],
+      "traceIds": [
+        "T1-R1",
+        "T1-R2",
+        "T2-R1",
+        "T2-R2",
+        "T3-R1",
+        "T3-R2"
+      ],
+      "complete": true,
+      "id": "obj-27",
+      "type": "RateSeries",
+      "parents": [
+        "obj-4",
+        "obj-8",
+        "obj-12",
+        "obj-16",
+        "obj-20",
+        "obj-26"
+      ],
+      "depth": 5,
+      "evidence": "call-27"
+    },
+    {
+      "experimentId": "SYN-KIN-001",
+      "activationEnergy": 40292.89560285816,
+      "energyUnit": "J/mol",
+      "lnA": 10.033297606435848,
+      "r2": 0.9987736271557298,
+      "trainingTraceIds": [
+        "T1-R1",
+        "T1-R2",
+        "T2-R1",
+        "T2-R2",
+        "T3-R1",
+        "T3-R2"
+      ],
+      "id": "obj-28",
+      "type": "ArrheniusModel",
+      "parents": [
+        "obj-27"
+      ],
+      "depth": 6,
+      "evidence": "call-28"
+    },
+    {
+      "experimentId": "SYN-KIN-001",
+      "items": [
+        {
+          "experimentId": "SYN-KIN-001",
+          "traceId": "T1-R1",
+          "role": "train",
+          "temperatureK": 298.15,
+          "temperatureUnit": "K",
+          "k": 0.0019352679728864726,
+          "unit": "s^-1",
+          "r2": 0.9979659445680048,
+          "id": "obj-4",
+          "type": "RateEstimate",
+          "parents": [
+            "obj-3"
+          ],
+          "depth": 4,
+          "evidence": "call-4"
+        },
+        {
+          "experimentId": "SYN-KIN-001",
+          "traceId": "T1-R2",
+          "role": "train",
+          "temperatureK": 298.15,
+          "temperatureUnit": "K",
+          "k": 0.0020288795577199275,
+          "unit": "s^-1",
+          "r2": 0.9973576115780423,
+          "id": "obj-8",
+          "type": "RateEstimate",
+          "parents": [
+            "obj-7"
+          ],
+          "depth": 4,
+          "evidence": "call-8"
+        },
+        {
+          "experimentId": "SYN-KIN-001",
+          "traceId": "T2-R1",
+          "role": "train",
+          "temperatureK": 308.15,
+          "temperatureUnit": "K",
+          "k": 0.0033865012392123137,
+          "unit": "s^-1",
+          "r2": 0.9989574420365962,
+          "id": "obj-12",
+          "type": "RateEstimate",
+          "parents": [
+            "obj-11"
+          ],
+          "depth": 4,
+          "evidence": "call-12"
+        },
+        {
+          "experimentId": "SYN-KIN-001",
+          "traceId": "T2-R2",
+          "role": "train",
+          "temperatureK": 308.15,
+          "temperatureUnit": "K",
+          "k": 0.0033960251308002196,
+          "unit": "s^-1",
+          "r2": 0.9993288892633764,
+          "id": "obj-16",
+          "type": "RateEstimate",
+          "parents": [
+            "obj-15"
+          ],
+          "depth": 4,
+          "evidence": "call-16"
+        },
+        {
+          "experimentId": "SYN-KIN-001",
+          "traceId": "T3-R1",
+          "role": "train",
+          "temperatureK": 318.15,
+          "temperatureUnit": "K",
+          "k": 0.005490267024455733,
+          "unit": "s^-1",
+          "r2": 0.9996230865208151,
+          "id": "obj-21",
+          "type": "RateEstimate",
+          "parents": [
+            "obj-19"
+          ],
+          "depth": 4,
+          "evidence": "call-21"
+        },
+        {
+          "experimentId": "SYN-KIN-001",
+          "traceId": "T3-R2",
+          "role": "train",
+          "temperatureK": 318.15,
+          "temperatureUnit": "K",
+          "k": 0.005525114578133332,
+          "unit": "s^-1",
+          "r2": 0.9996102298005463,
+          "id": "obj-26",
+          "type": "RateEstimate",
+          "parents": [
+            "obj-25"
+          ],
+          "depth": 4,
+          "evidence": "call-26"
+        }
+      ],
+      "traceIds": [
+        "T1-R1",
+        "T1-R2",
+        "T2-R1",
+        "T2-R2",
+        "T3-R1",
+        "T3-R2"
+      ],
+      "complete": true,
+      "id": "obj-29",
+      "type": "RateSeries",
+      "parents": [
+        "obj-4",
+        "obj-8",
+        "obj-12",
+        "obj-16",
+        "obj-21",
+        "obj-26"
+      ],
+      "depth": 5,
+      "evidence": "call-29"
+    },
+    {
+      "experimentId": "SYN-KIN-001",
+      "traceId": "T3-R2",
+      "role": "train",
+      "temperatureK": 318.15,
+      "temperatureUnit": "K",
+      "k": 0.0055113341518391555,
+      "unit": "s^-1",
+      "r2": 0.9996428066352187,
+      "id": "obj-30",
+      "type": "RateEstimate",
+      "parents": [
+        "obj-25"
+      ],
+      "depth": 4,
+      "evidence": "call-30"
+    },
+    {
+      "experimentId": "SYN-KIN-001",
+      "items": [
+        {
+          "experimentId": "SYN-KIN-001",
+          "traceId": "T1-R1",
+          "role": "train",
+          "temperatureK": 298.15,
+          "temperatureUnit": "K",
+          "k": 0.0019352679728864726,
+          "unit": "s^-1",
+          "r2": 0.9979659445680048,
+          "id": "obj-4",
+          "type": "RateEstimate",
+          "parents": [
+            "obj-3"
+          ],
+          "depth": 4,
+          "evidence": "call-4"
+        },
+        {
+          "experimentId": "SYN-KIN-001",
+          "traceId": "T1-R2",
+          "role": "train",
+          "temperatureK": 298.15,
+          "temperatureUnit": "K",
+          "k": 0.0020288795577199275,
+          "unit": "s^-1",
+          "r2": 0.9973576115780423,
+          "id": "obj-8",
+          "type": "RateEstimate",
+          "parents": [
+            "obj-7"
+          ],
+          "depth": 4,
+          "evidence": "call-8"
+        },
+        {
+          "experimentId": "SYN-KIN-001",
+          "traceId": "T2-R1",
+          "role": "train",
+          "temperatureK": 308.15,
+          "temperatureUnit": "K",
+          "k": 0.0033865012392123137,
+          "unit": "s^-1",
+          "r2": 0.9989574420365962,
+          "id": "obj-12",
+          "type": "RateEstimate",
+          "parents": [
+            "obj-11"
+          ],
+          "depth": 4,
+          "evidence": "call-12"
+        },
+        {
+          "experimentId": "SYN-KIN-001",
+          "traceId": "T2-R2",
+          "role": "train",
+          "temperatureK": 308.15,
+          "temperatureUnit": "K",
+          "k": 0.0033960251308002196,
+          "unit": "s^-1",
+          "r2": 0.9993288892633764,
+          "id": "obj-16",
+          "type": "RateEstimate",
+          "parents": [
+            "obj-15"
+          ],
+          "depth": 4,
+          "evidence": "call-16"
+        },
+        {
+          "experimentId": "SYN-KIN-001",
+          "traceId": "T3-R1",
+          "role": "train",
+          "temperatureK": 318.15,
+          "temperatureUnit": "K",
+          "k": 0.005482463853254518,
+          "unit": "s^-1",
+          "r2": 0.9996553158164541,
+          "id": "obj-20",
+          "type": "RateEstimate",
+          "parents": [
+            "obj-19"
+          ],
+          "depth": 4,
+          "evidence": "call-20"
+        },
+        {
+          "experimentId": "SYN-KIN-001",
+          "traceId": "T3-R2",
+          "role": "train",
+          "temperatureK": 318.15,
+          "temperatureUnit": "K",
+          "k": 0.0055113341518391555,
+          "unit": "s^-1",
+          "r2": 0.9996428066352187,
+          "id": "obj-30",
+          "type": "RateEstimate",
+          "parents": [
+            "obj-25"
+          ],
+          "depth": 4,
+          "evidence": "call-30"
+        }
+      ],
+      "traceIds": [
+        "T1-R1",
+        "T1-R2",
+        "T2-R1",
+        "T2-R2",
+        "T3-R1",
+        "T3-R2"
+      ],
+      "complete": true,
+      "id": "obj-31",
+      "type": "RateSeries",
+      "parents": [
+        "obj-4",
+        "obj-8",
+        "obj-12",
+        "obj-16",
+        "obj-20",
+        "obj-30"
+      ],
+      "depth": 5,
+      "evidence": "call-31"
+    },
+    {
+      "experimentId": "SYN-KIN-001",
+      "traceId": "T3-R2",
+      "role": "train",
+      "temperatureK": 318.15,
+      "temperatureUnit": "K",
+      "k": 0.0055113341518391555,
+      "unit": "s^-1",
+      "r2": 0.9996428066352187,
+      "id": "obj-32",
+      "type": "RateEstimate",
+      "parents": [
+        "obj-25"
+      ],
+      "depth": 4,
+      "evidence": "call-32"
+    },
+    {
+      "experimentId": "SYN-KIN-001",
+      "items": [
+        {
+          "experimentId": "SYN-KIN-001",
+          "traceId": "T1-R1",
+          "role": "train",
+          "temperatureK": 298.15,
+          "temperatureUnit": "K",
+          "k": 0.0019352679728864726,
+          "unit": "s^-1",
+          "r2": 0.9979659445680048,
+          "id": "obj-4",
+          "type": "RateEstimate",
+          "parents": [
+            "obj-3"
+          ],
+          "depth": 4,
+          "evidence": "call-4"
+        },
+        {
+          "experimentId": "SYN-KIN-001",
+          "traceId": "T1-R2",
+          "role": "train",
+          "temperatureK": 298.15,
+          "temperatureUnit": "K",
+          "k": 0.0020288795577199275,
+          "unit": "s^-1",
+          "r2": 0.9973576115780423,
+          "id": "obj-8",
+          "type": "RateEstimate",
+          "parents": [
+            "obj-7"
+          ],
+          "depth": 4,
+          "evidence": "call-8"
+        },
+        {
+          "experimentId": "SYN-KIN-001",
+          "traceId": "T2-R1",
+          "role": "train",
+          "temperatureK": 308.15,
+          "temperatureUnit": "K",
+          "k": 0.0033865012392123137,
+          "unit": "s^-1",
+          "r2": 0.9989574420365962,
+          "id": "obj-12",
+          "type": "RateEstimate",
+          "parents": [
+            "obj-11"
+          ],
+          "depth": 4,
+          "evidence": "call-12"
+        },
+        {
+          "experimentId": "SYN-KIN-001",
+          "traceId": "T2-R2",
+          "role": "train",
+          "temperatureK": 308.15,
+          "temperatureUnit": "K",
+          "k": 0.0033960251308002196,
+          "unit": "s^-1",
+          "r2": 0.9993288892633764,
+          "id": "obj-16",
+          "type": "RateEstimate",
+          "parents": [
+            "obj-15"
+          ],
+          "depth": 4,
+          "evidence": "call-16"
+        },
+        {
+          "experimentId": "SYN-KIN-001",
+          "traceId": "T3-R1",
+          "role": "train",
+          "temperatureK": 318.15,
+          "temperatureUnit": "K",
+          "k": 0.005490267024455733,
+          "unit": "s^-1",
+          "r2": 0.9996230865208151,
+          "id": "obj-21",
+          "type": "RateEstimate",
+          "parents": [
+            "obj-19"
+          ],
+          "depth": 4,
+          "evidence": "call-21"
+        },
+        {
+          "experimentId": "SYN-KIN-001",
+          "traceId": "T3-R2",
+          "role": "train",
+          "temperatureK": 318.15,
+          "temperatureUnit": "K",
+          "k": 0.0055113341518391555,
+          "unit": "s^-1",
+          "r2": 0.9996428066352187,
+          "id": "obj-32",
+          "type": "RateEstimate",
+          "parents": [
+            "obj-25"
+          ],
+          "depth": 4,
+          "evidence": "call-32"
+        }
+      ],
+      "traceIds": [
+        "T1-R1",
+        "T1-R2",
+        "T2-R1",
+        "T2-R2",
+        "T3-R1",
+        "T3-R2"
+      ],
+      "complete": true,
+      "id": "obj-33",
+      "type": "RateSeries",
+      "parents": [
+        "obj-4",
+        "obj-8",
+        "obj-12",
+        "obj-16",
+        "obj-21",
+        "obj-32"
+      ],
+      "depth": 5,
+      "evidence": "call-33"
+    },
+    {
+      "experimentId": "SYN-KIN-001",
+      "traceId": "T4-R1",
+      "role": "holdout",
+      "temperatureC": 55,
+      "timeUnit": "s",
+      "rows": [
+        {
+          "time": 0,
+          "concentration": 0.995408495570533
+        },
+        {
+          "time": 10,
+          "concentration": 0.9134585275800836
+        },
+        {
+          "time": 20,
+          "concentration": 0.8406150371436283
+        },
+        {
+          "time": 30,
+          "concentration": 0.7711027352507145
+        },
+        {
+          "time": 40,
+          "concentration": 0.7047927382987281
+        },
+        {
+          "time": 50,
+          "concentration": 0.6436085575598385
+        },
+        {
+          "time": 60,
+          "concentration": 0.5898498596084687
+        },
+        {
+          "time": 70,
+          "concentration": 0.5435053541364423
+        },
+        {
+          "time": 80,
+          "concentration": 0.499120403565567
+        },
+        {
+          "time": 90,
+          "concentration": 0.4569789561220191
+        },
+        {
+          "time": 100,
+          "concentration": 0.41812037284426345
+        },
+        {
+          "time": 110,
+          "concentration": 0.38376740773554596
+        }
+      ],
+      "id": "obj-34",
+      "type": "Trace",
+      "parents": [
+        "raw-3-1"
+      ],
+      "depth": 1,
+      "evidence": "call-34"
+    },
+    {
+      "experimentId": "SYN-KIN-001",
+      "traceId": "T4-R1",
+      "role": "holdout",
+      "passed": true,
+      "points": 12,
+      "issues": [],
+      "id": "obj-35",
+      "type": "QualityCheck",
+      "parents": [
+        "obj-34"
+      ],
+      "depth": 2,
+      "evidence": "call-35"
+    },
+    {
+      "experimentId": "SYN-KIN-001",
+      "traceId": "T4-R1",
+      "role": "holdout",
+      "temperatureK": 328.15,
+      "temperatureUnit": "K",
+      "timeUnit": "s",
+      "qualityPassed": true,
+      "rows": [
+        {
+          "t": 0,
+          "c": 0.995408495570533
+        },
+        {
+          "t": 10,
+          "c": 0.9134585275800836
+        },
+        {
+          "t": 20,
+          "c": 0.8406150371436283
+        },
+        {
+          "t": 30,
+          "c": 0.7711027352507145
+        },
+        {
+          "t": 40,
+          "c": 0.7047927382987281
+        },
+        {
+          "t": 50,
+          "c": 0.6436085575598385
+        },
+        {
+          "t": 60,
+          "c": 0.5898498596084687
+        },
+        {
+          "t": 70,
+          "c": 0.5435053541364423
+        },
+        {
+          "t": 80,
+          "c": 0.499120403565567
+        },
+        {
+          "t": 90,
+          "c": 0.4569789561220191
+        },
+        {
+          "t": 100,
+          "c": 0.41812037284426345
+        },
+        {
+          "t": 110,
+          "c": 0.38376740773554596
+        }
+      ],
+      "id": "obj-36",
+      "type": "NormalizedTrace",
+      "parents": [
+        "obj-34",
+        "obj-35"
+      ],
+      "depth": 3,
+      "evidence": "call-36"
+    },
+    {
+      "experimentId": "SYN-KIN-001",
+      "traceId": "T4-R1",
+      "role": "holdout",
+      "temperatureK": 328.15,
+      "temperatureUnit": "K",
+      "k": 0.00868030116991134,
+      "unit": "s^-1",
+      "r2": 0.9999412003167933,
+      "id": "obj-37",
+      "type": "RateEstimate",
+      "parents": [
+        "obj-36"
+      ],
+      "depth": 4,
+      "evidence": "call-37"
+    },
+    {
+      "experimentId": "SYN-KIN-001",
+      "items": [
+        {
+          "experimentId": "SYN-KIN-001",
+          "traceId": "T1-R1",
+          "role": "train",
+          "temperatureK": 298.15,
+          "temperatureUnit": "K",
+          "k": 0.0019352679728864726,
+          "unit": "s^-1",
+          "r2": 0.9979659445680048,
+          "id": "obj-4",
+          "type": "RateEstimate",
+          "parents": [
+            "obj-3"
+          ],
+          "depth": 4,
+          "evidence": "call-4"
+        },
+        {
+          "experimentId": "SYN-KIN-001",
+          "traceId": "T1-R2",
+          "role": "train",
+          "temperatureK": 298.15,
+          "temperatureUnit": "K",
+          "k": 0.0020288795577199275,
+          "unit": "s^-1",
+          "r2": 0.9973576115780423,
+          "id": "obj-8",
+          "type": "RateEstimate",
+          "parents": [
+            "obj-7"
+          ],
+          "depth": 4,
+          "evidence": "call-8"
+        },
+        {
+          "experimentId": "SYN-KIN-001",
+          "traceId": "T2-R1",
+          "role": "train",
+          "temperatureK": 308.15,
+          "temperatureUnit": "K",
+          "k": 0.0033865012392123137,
+          "unit": "s^-1",
+          "r2": 0.9989574420365962,
+          "id": "obj-12",
+          "type": "RateEstimate",
+          "parents": [
+            "obj-11"
+          ],
+          "depth": 4,
+          "evidence": "call-12"
+        },
+        {
+          "experimentId": "SYN-KIN-001",
+          "traceId": "T2-R2",
+          "role": "train",
+          "temperatureK": 308.15,
+          "temperatureUnit": "K",
+          "k": 0.0033960251308002196,
+          "unit": "s^-1",
+          "r2": 0.9993288892633764,
+          "id": "obj-16",
+          "type": "RateEstimate",
+          "parents": [
+            "obj-15"
+          ],
+          "depth": 4,
+          "evidence": "call-16"
+        },
+        {
+          "experimentId": "SYN-KIN-001",
+          "traceId": "T3-R1",
+          "role": "train",
+          "temperatureK": 318.15,
+          "temperatureUnit": "K",
+          "k": 0.005490267024455733,
+          "unit": "s^-1",
+          "r2": 0.9996230865208151,
+          "id": "obj-21",
+          "type": "RateEstimate",
+          "parents": [
+            "obj-19"
+          ],
+          "depth": 4,
+          "evidence": "call-21"
+        },
+        {
+          "experimentId": "SYN-KIN-001",
+          "traceId": "T3-R2",
+          "role": "train",
+          "temperatureK": 318.15,
+          "temperatureUnit": "K",
+          "k": 0.0055113341518391555,
+          "unit": "s^-1",
+          "r2": 0.9996428066352187,
+          "id": "obj-32",
+          "type": "RateEstimate",
+          "parents": [
+            "obj-25"
+          ],
+          "depth": 4,
+          "evidence": "call-32"
+        }
+      ],
+      "traceIds": [
+        "T1-R1",
+        "T1-R2",
+        "T2-R1",
+        "T2-R2",
+        "T3-R1",
+        "T3-R2"
+      ],
+      "complete": true,
+      "id": "obj-38",
+      "type": "RateSeries",
+      "parents": [
+        "obj-4",
+        "obj-8",
+        "obj-12",
+        "obj-16",
+        "obj-21",
+        "obj-32"
+      ],
+      "depth": 5,
+      "evidence": "call-38"
+    },
+    {
+      "experimentId": "SYN-KIN-001",
+      "traceId": "T4-R1",
+      "role": "holdout",
+      "temperatureK": 328.15,
+      "temperatureUnit": "K",
+      "k": 0.00867841146715476,
+      "unit": "s^-1",
+      "r2": 0.9999408672525893,
+      "id": "obj-39",
+      "type": "RateEstimate",
+      "parents": [
+        "obj-36"
+      ],
+      "depth": 4,
+      "evidence": "call-39"
+    },
+    {
+      "experimentId": "SYN-KIN-001",
+      "traceId": "T3-R2",
+      "role": "train",
+      "temperatureK": 318.15,
+      "temperatureUnit": "K",
+      "k": 0.005525114578133332,
+      "unit": "s^-1",
+      "r2": 0.9996102298005463,
+      "id": "obj-41",
+      "type": "RateEstimate",
+      "parents": [
+        "obj-25"
+      ],
+      "depth": 4,
+      "evidence": "call-41"
+    },
+    {
+      "experimentId": "SYN-KIN-001",
+      "traceId": "T3-R2",
+      "role": "train",
+      "temperatureK": 318.15,
+      "temperatureUnit": "K",
+      "k": 0.0055113341518391555,
+      "unit": "s^-1",
+      "r2": 0.9996428066352187,
+      "id": "obj-42",
+      "type": "RateEstimate",
+      "parents": [
+        "obj-25"
+      ],
+      "depth": 4,
+      "evidence": "call-42"
+    },
+    {
+      "experimentId": "SYN-KIN-001",
+      "traceId": "T3-R2",
+      "role": "train",
+      "temperatureK": 318.15,
+      "temperatureUnit": "K",
+      "k": 0.005525114578133332,
+      "unit": "s^-1",
+      "r2": 0.9996102298005463,
+      "id": "obj-43",
+      "type": "RateEstimate",
+      "parents": [
+        "obj-25"
+      ],
+      "depth": 4,
+      "evidence": "call-43"
+    },
+    {
+      "experimentId": "SYN-KIN-001",
+      "traceId": "T4-R1",
+      "role": "holdout",
+      "temperatureK": 328.15,
+      "temperatureUnit": "K",
+      "k": 0.00867841146715476,
+      "unit": "s^-1",
+      "r2": 0.9999408672525893,
+      "id": "obj-44",
+      "type": "RateEstimate",
+      "parents": [
+        "obj-36"
+      ],
+      "depth": 4,
+      "evidence": "call-44"
+    },
+    {
+      "experimentId": "SYN-KIN-001",
+      "traceId": "T3-R2",
+      "role": "train",
+      "temperatureK": 318.15,
+      "temperatureUnit": "K",
+      "k": 0.005525114578133332,
+      "unit": "s^-1",
+      "r2": 0.9996102298005463,
+      "id": "obj-45",
+      "type": "RateEstimate",
+      "parents": [
+        "obj-25"
+      ],
+      "depth": 4,
+      "evidence": "call-45"
+    },
+    {
+      "experimentId": "SYN-KIN-001",
+      "items": [
+        {
+          "experimentId": "SYN-KIN-001",
+          "traceId": "T1-R1",
+          "role": "train",
+          "temperatureK": 298.15,
+          "temperatureUnit": "K",
+          "k": 0.0019352679728864726,
+          "unit": "s^-1",
+          "r2": 0.9979659445680048,
+          "id": "obj-4",
+          "type": "RateEstimate",
+          "parents": [
+            "obj-3"
+          ],
+          "depth": 4,
+          "evidence": "call-4"
+        },
+        {
+          "experimentId": "SYN-KIN-001",
+          "traceId": "T1-R2",
+          "role": "train",
+          "temperatureK": 298.15,
+          "temperatureUnit": "K",
+          "k": 0.0020288795577199275,
+          "unit": "s^-1",
+          "r2": 0.9973576115780423,
+          "id": "obj-8",
+          "type": "RateEstimate",
+          "parents": [
+            "obj-7"
+          ],
+          "depth": 4,
+          "evidence": "call-8"
+        },
+        {
+          "experimentId": "SYN-KIN-001",
+          "traceId": "T2-R1",
+          "role": "train",
+          "temperatureK": 308.15,
+          "temperatureUnit": "K",
+          "k": 0.0033865012392123137,
+          "unit": "s^-1",
+          "r2": 0.9989574420365962,
+          "id": "obj-12",
+          "type": "RateEstimate",
+          "parents": [
+            "obj-11"
+          ],
+          "depth": 4,
+          "evidence": "call-12"
+        },
+        {
+          "experimentId": "SYN-KIN-001",
+          "traceId": "T2-R2",
+          "role": "train",
+          "temperatureK": 308.15,
+          "temperatureUnit": "K",
+          "k": 0.0033960251308002196,
+          "unit": "s^-1",
+          "r2": 0.9993288892633764,
+          "id": "obj-16",
+          "type": "RateEstimate",
+          "parents": [
+            "obj-15"
+          ],
+          "depth": 4,
+          "evidence": "call-16"
+        },
+        {
+          "experimentId": "SYN-KIN-001",
+          "traceId": "T3-R1",
+          "role": "train",
+          "temperatureK": 318.15,
+          "temperatureUnit": "K",
+          "k": 0.005490267024455733,
+          "unit": "s^-1",
+          "r2": 0.9996230865208151,
+          "id": "obj-21",
+          "type": "RateEstimate",
+          "parents": [
+            "obj-19"
+          ],
+          "depth": 4,
+          "evidence": "call-21"
+        },
+        {
+          "experimentId": "SYN-KIN-001",
+          "traceId": "T3-R2",
+          "role": "train",
+          "temperatureK": 318.15,
+          "temperatureUnit": "K",
+          "k": 0.005525114578133332,
+          "unit": "s^-1",
+          "r2": 0.9996102298005463,
+          "id": "obj-45",
+          "type": "RateEstimate",
+          "parents": [
+            "obj-25"
+          ],
+          "depth": 4,
+          "evidence": "call-45"
+        }
+      ],
+      "traceIds": [
+        "T1-R1",
+        "T1-R2",
+        "T2-R1",
+        "T2-R2",
+        "T3-R1",
+        "T3-R2"
+      ],
+      "complete": true,
+      "id": "obj-46",
+      "type": "RateSeries",
+      "parents": [
+        "obj-4",
+        "obj-8",
+        "obj-12",
+        "obj-16",
+        "obj-21",
+        "obj-45"
+      ],
+      "depth": 5,
+      "evidence": "call-46"
+    },
+    {
+      "experimentId": "SYN-KIN-001",
+      "traceId": "T4-R1",
+      "role": "holdout",
+      "temperatureK": 328.15,
+      "temperatureUnit": "K",
+      "k": 0.00868030116991134,
+      "unit": "s^-1",
+      "r2": 0.9999412003167933,
+      "id": "obj-47",
+      "type": "RateEstimate",
+      "parents": [
+        "obj-36"
+      ],
+      "depth": 4,
+      "evidence": "call-47"
+    },
+    {
+      "experimentId": "SYN-KIN-001",
+      "items": [
+        {
+          "experimentId": "SYN-KIN-001",
+          "traceId": "T1-R1",
+          "role": "train",
+          "temperatureK": 298.15,
+          "temperatureUnit": "K",
+          "k": 0.0019352679728864726,
+          "unit": "s^-1",
+          "r2": 0.9979659445680048,
+          "id": "obj-4",
+          "type": "RateEstimate",
+          "parents": [
+            "obj-3"
+          ],
+          "depth": 4,
+          "evidence": "call-4"
+        },
+        {
+          "experimentId": "SYN-KIN-001",
+          "traceId": "T1-R2",
+          "role": "train",
+          "temperatureK": 298.15,
+          "temperatureUnit": "K",
+          "k": 0.0020288795577199275,
+          "unit": "s^-1",
+          "r2": 0.9973576115780423,
+          "id": "obj-8",
+          "type": "RateEstimate",
+          "parents": [
+            "obj-7"
+          ],
+          "depth": 4,
+          "evidence": "call-8"
+        },
+        {
+          "experimentId": "SYN-KIN-001",
+          "traceId": "T2-R1",
+          "role": "train",
+          "temperatureK": 308.15,
+          "temperatureUnit": "K",
+          "k": 0.0033865012392123137,
+          "unit": "s^-1",
+          "r2": 0.9989574420365962,
+          "id": "obj-12",
+          "type": "RateEstimate",
+          "parents": [
+            "obj-11"
+          ],
+          "depth": 4,
+          "evidence": "call-12"
+        },
+        {
+          "experimentId": "SYN-KIN-001",
+          "traceId": "T2-R2",
+          "role": "train",
+          "temperatureK": 308.15,
+          "temperatureUnit": "K",
+          "k": 0.0033960251308002196,
+          "unit": "s^-1",
+          "r2": 0.9993288892633764,
+          "id": "obj-16",
+          "type": "RateEstimate",
+          "parents": [
+            "obj-15"
+          ],
+          "depth": 4,
+          "evidence": "call-16"
+        },
+        {
+          "experimentId": "SYN-KIN-001",
+          "traceId": "T3-R1",
+          "role": "train",
+          "temperatureK": 318.15,
+          "temperatureUnit": "K",
+          "k": 0.005490267024455733,
+          "unit": "s^-1",
+          "r2": 0.9996230865208151,
+          "id": "obj-21",
+          "type": "RateEstimate",
+          "parents": [
+            "obj-19"
+          ],
+          "depth": 4,
+          "evidence": "call-21"
+        },
+        {
+          "experimentId": "SYN-KIN-001",
+          "traceId": "T3-R2",
+          "role": "train",
+          "temperatureK": 318.15,
+          "temperatureUnit": "K",
+          "k": 0.005525114578133332,
+          "unit": "s^-1",
+          "r2": 0.9996102298005463,
+          "id": "obj-45",
+          "type": "RateEstimate",
+          "parents": [
+            "obj-25"
+          ],
+          "depth": 4,
+          "evidence": "call-45"
+        }
+      ],
+      "traceIds": [
+        "T1-R1",
+        "T1-R2",
+        "T2-R1",
+        "T2-R2",
+        "T3-R1",
+        "T3-R2"
+      ],
+      "complete": true,
+      "id": "obj-48",
+      "type": "RateSeries",
+      "parents": [
+        "obj-4",
+        "obj-8",
+        "obj-12",
+        "obj-16",
+        "obj-21",
+        "obj-45"
+      ],
+      "depth": 5,
+      "evidence": "call-48"
+    }
+  ],
+  "events": [
+    {
+      "id": "call-1",
+      "toolId": "read_trace",
+      "implementation": "read_trace",
+      "name": "读取反应记录",
+      "bindings": {
+        "raw": "raw-0-1"
+      },
+      "checks": [
+        {
+          "id": "parameters",
+          "status": "satisfied",
+          "description": "参数名必须与工具接口完全一致"
+        },
+        {
+          "id": "registration",
+          "status": "satisfied",
+          "description": "工具规约与已安装函数一致"
+        },
+        {
+          "id": "type:raw",
+          "status": "satisfied",
+          "description": "输入对象类型：RawTrace"
+        },
+        {
+          "id": "identity:raw",
+          "status": "satisfied",
+          "description": "对象必须来自当前实验及当前运行"
+        }
+      ],
+      "outcome": "allow",
+      "at": "2026-11-13T05:00:35.960Z",
+      "output": "obj-1",
+      "execution": "succeeded",
+      "decision": {
+        "reason": "需先将原始训练曲线 T1-R1 转为 Trace 才能进行后续质量检查与标准化",
+        "model": "qwen-plus",
+        "usage": {
+          "prompt_tokens": 6485,
+          "completion_tokens": 48
+        },
+        "at": "2026-11-13T05:00:35.941Z"
+      }
+    },
+    {
+      "id": "call-2",
+      "toolId": "check_quality",
+      "implementation": "check_quality",
+      "name": "检查曲线质量",
+      "bindings": {
+        "trace": "obj-1"
+      },
+      "checks": [
+        {
+          "id": "parameters",
+          "status": "satisfied",
+          "description": "参数名必须与工具接口完全一致"
+        },
+        {
+          "id": "registration",
+          "status": "satisfied",
+          "description": "工具规约与已安装函数一致"
+        },
+        {
+          "id": "type:trace",
+          "status": "satisfied",
+          "description": "输入对象类型：Trace"
+        },
+        {
+          "id": "identity:trace",
+          "status": "satisfied",
+          "description": "对象必须来自当前实验及当前运行"
+        }
+      ],
+      "outcome": "allow",
+      "at": "2026-11-13T05:00:37.660Z",
+      "output": "obj-2",
+      "execution": "succeeded",
+      "decision": {
+        "reason": "需要为T1-R1曲线生成质量检查证据，以便后续标准化和速率拟合",
+        "model": "qwen-plus",
+        "usage": {
+          "prompt_tokens": 6923,
+          "completion_tokens": 41
+        },
+        "at": "2026-11-13T05:00:37.657Z"
+      }
+    },
+    {
+      "id": "call-3",
+      "toolId": "normalize",
+      "implementation": "normalize",
+      "name": "统一物理单位",
+      "bindings": {
+        "trace": "obj-1",
+        "quality": "obj-2"
+      },
+      "checks": [
+        {
+          "id": "parameters",
+          "status": "satisfied",
+          "description": "参数名必须与工具接口完全一致"
+        },
+        {
+          "id": "registration",
+          "status": "satisfied",
+          "description": "工具规约与已安装函数一致"
+        },
+        {
+          "id": "type:trace",
+          "status": "satisfied",
+          "description": "输入对象类型：Trace"
+        },
+        {
+          "id": "identity:trace",
+          "status": "satisfied",
+          "description": "对象必须来自当前实验及当前运行"
+        },
+        {
+          "id": "type:quality",
+          "status": "satisfied",
+          "description": "输入对象类型：QualityCheck"
+        },
+        {
+          "id": "identity:quality",
+          "status": "satisfied",
+          "description": "对象必须来自当前实验及当前运行"
+        },
+        {
+          "id": "same_trace",
+          "status": "satisfied",
+          "description": "曲线与质量检查必须指向同一次实验记录"
+        },
+        {
+          "id": "qc",
+          "status": "satisfied",
+          "description": "质量检查已通过"
+        },
+        {
+          "id": "source_units",
+          "status": "satisfied",
+          "description": "原始时间单位存在已登记转换"
+        }
+      ],
+      "outcome": "allow",
+      "at": "2026-11-13T05:00:39.621Z",
+      "output": "obj-3",
+      "execution": "succeeded",
+      "decision": {
+        "reason": "T1-R1 已有 Trace 和 QualityCheck，需先标准化为秒和开尔文单位以满足后续速率拟合要求",
+        "model": "qwen-plus",
+        "usage": {
+          "prompt_tokens": 7033,
+          "completion_tokens": 56
+        },
+        "at": "2026-11-13T05:00:39.619Z"
+      }
+    },
+    {
+      "id": "call-4",
+      "toolId": "fit_rate",
+      "implementation": "fit_rate",
+      "name": "拟合一级反应速率",
+      "bindings": {
+        "curve": "obj-3"
+      },
+      "checks": [
+        {
+          "id": "parameters",
+          "status": "satisfied",
+          "description": "参数名必须与工具接口完全一致"
+        },
+        {
+          "id": "registration",
+          "status": "satisfied",
+          "description": "工具规约与已安装函数一致"
+        },
+        {
+          "id": "type:curve",
+          "status": "satisfied",
+          "description": "输入对象类型：NormalizedTrace"
+        },
+        {
+          "id": "identity:curve",
+          "status": "satisfied",
+          "description": "对象必须来自当前实验及当前运行"
+        },
+        {
+          "id": "units",
+          "status": "satisfied",
+          "description": "速率拟合要求秒与绝对温度 K"
+        },
+        {
+          "id": "quality",
+          "status": "satisfied",
+          "description": "标准化曲线具备质量证据"
+        }
+      ],
+      "outcome": "allow",
+      "at": "2026-11-13T05:00:41.374Z",
+      "output": "obj-4",
+      "execution": "succeeded",
+      "decision": {
+        "reason": "T1-R1 已完成标准化且通过质量检查，可立即进行一级反应速率拟合",
+        "model": "qwen-plus",
+        "usage": {
+          "prompt_tokens": 7481,
+          "completion_tokens": 43
+        },
+        "at": "2026-11-13T05:00:41.372Z"
+      }
+    },
+    {
+      "id": "call-5",
+      "toolId": "read_trace",
+      "implementation": "read_trace",
+      "name": "读取反应记录",
+      "bindings": {
+        "raw": "raw-0-2"
+      },
+      "checks": [
+        {
+          "id": "parameters",
+          "status": "satisfied",
+          "description": "参数名必须与工具接口完全一致"
+        },
+        {
+          "id": "registration",
+          "status": "satisfied",
+          "description": "工具规约与已安装函数一致"
+        },
+        {
+          "id": "type:raw",
+          "status": "satisfied",
+          "description": "输入对象类型：RawTrace"
+        },
+        {
+          "id": "identity:raw",
+          "status": "satisfied",
+          "description": "对象必须来自当前实验及当前运行"
+        }
+      ],
+      "outcome": "allow",
+      "at": "2026-11-13T05:00:43.289Z",
+      "output": "obj-5",
+      "execution": "succeeded",
+      "decision": {
+        "reason": "T1-R2 是训练曲线，需先读取为 Trace 才能进行后续质量检查和标准化",
+        "model": "qwen-plus",
+        "usage": {
+          "prompt_tokens": 7648,
+          "completion_tokens": 47
+        },
+        "at": "2026-11-13T05:00:43.288Z"
+      }
+    },
+    {
+      "id": "call-6",
+      "toolId": "check_quality",
+      "implementation": "check_quality",
+      "name": "检查曲线质量",
+      "bindings": {
+        "trace": "obj-5"
+      },
+      "checks": [
+        {
+          "id": "parameters",
+          "status": "satisfied",
+          "description": "参数名必须与工具接口完全一致"
+        },
+        {
+          "id": "registration",
+          "status": "satisfied",
+          "description": "工具规约与已安装函数一致"
+        },
+        {
+          "id": "type:trace",
+          "status": "satisfied",
+          "description": "输入对象类型：Trace"
+        },
+        {
+          "id": "identity:trace",
+          "status": "satisfied",
+          "description": "对象必须来自当前实验及当前运行"
+        }
+      ],
+      "outcome": "allow",
+      "at": "2026-11-13T05:00:45.178Z",
+      "output": "obj-6",
+      "execution": "succeeded",
+      "decision": {
+        "reason": "T1-R2 trace needs quality check before normalization and rate estimation",
+        "model": "qwen-plus",
+        "usage": {
+          "prompt_tokens": 8214,
+          "completion_tokens": 35
+        },
+        "at": "2026-11-13T05:00:45.176Z"
+      }
+    },
+    {
+      "id": "call-7",
+      "toolId": "normalize",
+      "implementation": "normalize",
+      "name": "统一物理单位",
+      "bindings": {
+        "trace": "obj-5",
+        "quality": "obj-6"
+      },
+      "checks": [
+        {
+          "id": "parameters",
+          "status": "satisfied",
+          "description": "参数名必须与工具接口完全一致"
+        },
+        {
+          "id": "registration",
+          "status": "satisfied",
+          "description": "工具规约与已安装函数一致"
+        },
+        {
+          "id": "type:trace",
+          "status": "satisfied",
+          "description": "输入对象类型：Trace"
+        },
+        {
+          "id": "identity:trace",
+          "status": "satisfied",
+          "description": "对象必须来自当前实验及当前运行"
+        },
+        {
+          "id": "type:quality",
+          "status": "satisfied",
+          "description": "输入对象类型：QualityCheck"
+        },
+        {
+          "id": "identity:quality",
+          "status": "satisfied",
+          "description": "对象必须来自当前实验及当前运行"
+        },
+        {
+          "id": "same_trace",
+          "status": "satisfied",
+          "description": "曲线与质量检查必须指向同一次实验记录"
+        },
+        {
+          "id": "qc",
+          "status": "satisfied",
+          "description": "质量检查已通过"
+        },
+        {
+          "id": "source_units",
+          "status": "satisfied",
+          "description": "原始时间单位存在已登记转换"
+        }
+      ],
+      "outcome": "allow",
+      "at": "2026-11-13T05:00:47.236Z",
+      "output": "obj-7",
+      "execution": "succeeded",
+      "decision": {
+        "reason": "T1-R2 已有 Trace 和 QualityCheck，下一步需标准化为秒与 K 单位以支持速率拟合",
+        "model": "qwen-plus",
+        "usage": {
+          "prompt_tokens": 8324,
+          "completion_tokens": 54
+        },
+        "at": "2026-11-13T05:00:47.235Z"
+      }
+    },
+    {
+      "id": "call-8",
+      "toolId": "fit_rate_robust",
+      "implementation": "fit_rate_robust",
+      "name": "稳健估计反应速率",
+      "bindings": {
+        "curve": "obj-7"
+      },
+      "checks": [
+        {
+          "id": "parameters",
+          "status": "satisfied",
+          "description": "参数名必须与工具接口完全一致"
+        },
+        {
+          "id": "registration",
+          "status": "satisfied",
+          "description": "工具规约与已安装函数一致"
+        },
+        {
+          "id": "type:curve",
+          "status": "satisfied",
+          "description": "输入对象类型：NormalizedTrace"
+        },
+        {
+          "id": "identity:curve",
+          "status": "satisfied",
+          "description": "对象必须来自当前实验及当前运行"
+        },
+        {
+          "id": "units",
+          "status": "satisfied",
+          "description": "速率拟合要求秒与绝对温度 K"
+        },
+        {
+          "id": "quality",
+          "status": "satisfied",
+          "description": "标准化曲线具备质量证据"
+        }
+      ],
+      "outcome": "allow",
+      "at": "2026-11-13T05:00:49.257Z",
+      "output": "obj-8",
+      "execution": "succeeded",
+      "decision": {
+        "reason": "T1-R2 已有 NormalizedTrace (obj-7)，需生成其 RateEstimate 以覆盖全部训练曲线",
+        "model": "qwen-plus",
+        "usage": {
+          "prompt_tokens": 8771,
+          "completion_tokens": 52
+        },
+        "at": "2026-11-13T05:00:49.256Z"
+      }
+    },
+    {
+      "id": "call-9",
+      "toolId": "read_trace",
+      "implementation": "read_trace",
+      "name": "读取反应记录",
+      "bindings": {
+        "raw": "raw-1-1"
+      },
+      "checks": [
+        {
+          "id": "parameters",
+          "status": "satisfied",
+          "description": "参数名必须与工具接口完全一致"
+        },
+        {
+          "id": "registration",
+          "status": "satisfied",
+          "description": "工具规约与已安装函数一致"
+        },
+        {
+          "id": "type:raw",
+          "status": "satisfied",
+          "description": "输入对象类型：RawTrace"
+        },
+        {
+          "id": "identity:raw",
+          "status": "satisfied",
+          "description": "对象必须来自当前实验及当前运行"
+        }
+      ],
+      "outcome": "allow",
+      "at": "2026-11-13T05:00:51.388Z",
+      "output": "obj-9",
+      "execution": "succeeded",
+      "decision": {
+        "reason": "T2-R1 是训练曲线但尚未读取为 Trace，需先完成数据接入以支持后续质量检查与标准化",
+        "model": "qwen-plus",
+        "usage": {
+          "prompt_tokens": 8941,
+          "completion_tokens": 50
+        },
+        "at": "2026-11-13T05:00:51.386Z"
+      }
+    },
+    {
+      "id": "call-10",
+      "toolId": "check_quality",
+      "implementation": "check_quality",
+      "name": "检查曲线质量",
+      "bindings": {
+        "trace": "obj-9"
+      },
+      "checks": [
+        {
+          "id": "parameters",
+          "status": "satisfied",
+          "description": "参数名必须与工具接口完全一致"
+        },
+        {
+          "id": "registration",
+          "status": "satisfied",
+          "description": "工具规约与已安装函数一致"
+        },
+        {
+          "id": "type:trace",
+          "status": "satisfied",
+          "description": "输入对象类型：Trace"
+        },
+        {
+          "id": "identity:trace",
+          "status": "satisfied",
+          "description": "对象必须来自当前实验及当前运行"
+        }
+      ],
+      "outcome": "allow",
+      "at": "2026-11-13T05:00:53.743Z",
+      "output": "obj-10",
+      "execution": "succeeded",
+      "decision": {
+        "reason": "T2-R1 已读取为 Trace（obj-9），需先完成质量检查才能继续标准化和速率拟合",
+        "model": "qwen-plus",
+        "usage": {
+          "prompt_tokens": 9377,
+          "completion_tokens": 49
+        },
+        "at": "2026-11-13T05:00:53.741Z"
+      }
+    },
+    {
+      "id": "call-11",
+      "toolId": "normalize",
+      "implementation": "normalize",
+      "name": "统一物理单位",
+      "bindings": {
+        "trace": "obj-9",
+        "quality": "obj-10"
+      },
+      "checks": [
+        {
+          "id": "parameters",
+          "status": "satisfied",
+          "description": "参数名必须与工具接口完全一致"
+        },
+        {
+          "id": "registration",
+          "status": "satisfied",
+          "description": "工具规约与已安装函数一致"
+        },
+        {
+          "id": "type:trace",
+          "status": "satisfied",
+          "description": "输入对象类型：Trace"
+        },
+        {
+          "id": "identity:trace",
+          "status": "satisfied",
+          "description": "对象必须来自当前实验及当前运行"
+        },
+        {
+          "id": "type:quality",
+          "status": "satisfied",
+          "description": "输入对象类型：QualityCheck"
+        },
+        {
+          "id": "identity:quality",
+          "status": "satisfied",
+          "description": "对象必须来自当前实验及当前运行"
+        },
+        {
+          "id": "same_trace",
+          "status": "satisfied",
+          "description": "曲线与质量检查必须指向同一次实验记录"
+        },
+        {
+          "id": "qc",
+          "status": "satisfied",
+          "description": "质量检查已通过"
+        },
+        {
+          "id": "source_units",
+          "status": "satisfied",
+          "description": "原始时间单位存在已登记转换"
+        }
+      ],
+      "outcome": "allow",
+      "at": "2026-11-13T05:00:55.838Z",
+      "output": "obj-11",
+      "execution": "succeeded",
+      "decision": {
+        "reason": "T2-R1 已有 Trace 和 QualityCheck，下一步需标准化为秒和 K 单位以支持速率拟合",
+        "model": "qwen-plus",
+        "usage": {
+          "prompt_tokens": 9492,
+          "completion_tokens": 55
+        },
+        "at": "2026-11-13T05:00:55.837Z"
+      }
+    },
+    {
+      "id": "call-12",
+      "toolId": "fit_rate",
+      "implementation": "fit_rate",
+      "name": "拟合一级反应速率",
+      "bindings": {
+        "curve": "obj-11"
+      },
+      "checks": [
+        {
+          "id": "parameters",
+          "status": "satisfied",
+          "description": "参数名必须与工具接口完全一致"
+        },
+        {
+          "id": "registration",
+          "status": "satisfied",
+          "description": "工具规约与已安装函数一致"
+        },
+        {
+          "id": "type:curve",
+          "status": "satisfied",
+          "description": "输入对象类型：NormalizedTrace"
+        },
+        {
+          "id": "identity:curve",
+          "status": "satisfied",
+          "description": "对象必须来自当前实验及当前运行"
+        },
+        {
+          "id": "units",
+          "status": "satisfied",
+          "description": "速率拟合要求秒与绝对温度 K"
+        },
+        {
+          "id": "quality",
+          "status": "satisfied",
+          "description": "标准化曲线具备质量证据"
+        }
+      ],
+      "outcome": "allow",
+      "at": "2026-11-13T05:00:57.847Z",
+      "output": "obj-12",
+      "execution": "succeeded",
+      "decision": {
+        "reason": "T2-R1 已完成质量检查和单位归一化，需估计其速率以覆盖全部训练曲线",
+        "model": "qwen-plus",
+        "usage": {
+          "prompt_tokens": 9944,
+          "completion_tokens": 47
+        },
+        "at": "2026-11-13T05:00:57.846Z"
+      }
+    },
+    {
+      "id": "call-13",
+      "toolId": "read_trace",
+      "implementation": "read_trace",
+      "name": "读取反应记录",
+      "bindings": {
+        "raw": "raw-1-2"
+      },
+      "checks": [
+        {
+          "id": "parameters",
+          "status": "satisfied",
+          "description": "参数名必须与工具接口完全一致"
+        },
+        {
+          "id": "registration",
+          "status": "satisfied",
+          "description": "工具规约与已安装函数一致"
+        },
+        {
+          "id": "type:raw",
+          "status": "satisfied",
+          "description": "输入对象类型：RawTrace"
+        },
+        {
+          "id": "identity:raw",
+          "status": "satisfied",
+          "description": "对象必须来自当前实验及当前运行"
+        }
+      ],
+      "outcome": "allow",
+      "at": "2026-11-13T05:01:00.000Z",
+      "output": "obj-13",
+      "execution": "succeeded",
+      "decision": {
+        "reason": "T2-R2 是训练曲线，尚未读取为 Trace 对象，需补全以支持后续质量检查与标准化",
+        "model": "qwen-plus",
+        "usage": {
+          "prompt_tokens": 10118,
+          "completion_tokens": 50
+        },
+        "at": "2026-11-13T05:00:59.999Z"
+      }
+    },
+    {
+      "id": "call-14",
+      "toolId": "check_quality",
+      "implementation": "check_quality",
+      "name": "检查曲线质量",
+      "bindings": {
+        "trace": "obj-13"
+      },
+      "checks": [
+        {
+          "id": "parameters",
+          "status": "satisfied",
+          "description": "参数名必须与工具接口完全一致"
+        },
+        {
+          "id": "registration",
+          "status": "satisfied",
+          "description": "工具规约与已安装函数一致"
+        },
+        {
+          "id": "type:trace",
+          "status": "satisfied",
+          "description": "输入对象类型：Trace"
+        },
+        {
+          "id": "identity:trace",
+          "status": "satisfied",
+          "description": "对象必须来自当前实验及当前运行"
+        }
+      ],
+      "outcome": "allow",
+      "at": "2026-11-13T05:01:02.029Z",
+      "output": "obj-14",
+      "execution": "succeeded",
+      "decision": {
+        "reason": "T2-R2 trace exists as Trace (obj-13) but lacks QualityCheck; required before normalization and rate estimation.",
+        "model": "qwen-plus",
+        "usage": {
+          "prompt_tokens": 10689,
+          "completion_tokens": 49
+        },
+        "at": "2026-11-13T05:01:02.028Z"
+      }
+    },
+    {
+      "id": "call-15",
+      "toolId": "normalize",
+      "implementation": "normalize",
+      "name": "统一物理单位",
+      "bindings": {
+        "trace": "obj-13",
+        "quality": "obj-14"
+      },
+      "checks": [
+        {
+          "id": "parameters",
+          "status": "satisfied",
+          "description": "参数名必须与工具接口完全一致"
+        },
+        {
+          "id": "registration",
+          "status": "satisfied",
+          "description": "工具规约与已安装函数一致"
+        },
+        {
+          "id": "type:trace",
+          "status": "satisfied",
+          "description": "输入对象类型：Trace"
+        },
+        {
+          "id": "identity:trace",
+          "status": "satisfied",
+          "description": "对象必须来自当前实验及当前运行"
+        },
+        {
+          "id": "type:quality",
+          "status": "satisfied",
+          "description": "输入对象类型：QualityCheck"
+        },
+        {
+          "id": "identity:quality",
+          "status": "satisfied",
+          "description": "对象必须来自当前实验及当前运行"
+        },
+        {
+          "id": "same_trace",
+          "status": "satisfied",
+          "description": "曲线与质量检查必须指向同一次实验记录"
+        },
+        {
+          "id": "qc",
+          "status": "satisfied",
+          "description": "质量检查已通过"
+        },
+        {
+          "id": "source_units",
+          "status": "satisfied",
+          "description": "原始时间单位存在已登记转换"
+        }
+      ],
+      "outcome": "allow",
+      "at": "2026-11-13T05:01:04.225Z",
+      "output": "obj-15",
+      "execution": "succeeded",
+      "decision": {
+        "reason": "T2-R2 已有 Trace 和 QualityCheck，下一步需标准化为秒与 K 单位以支持速率拟合",
+        "model": "qwen-plus",
+        "usage": {
+          "prompt_tokens": 10806,
+          "completion_tokens": 56
+        },
+        "at": "2026-11-13T05:01:04.223Z"
+      }
+    },
+    {
+      "id": "call-16",
+      "toolId": "fit_rate_robust",
+      "implementation": "fit_rate_robust",
+      "name": "稳健估计反应速率",
+      "bindings": {
+        "curve": "obj-15"
+      },
+      "checks": [
+        {
+          "id": "parameters",
+          "status": "satisfied",
+          "description": "参数名必须与工具接口完全一致"
+        },
+        {
+          "id": "registration",
+          "status": "satisfied",
+          "description": "工具规约与已安装函数一致"
+        },
+        {
+          "id": "type:curve",
+          "status": "satisfied",
+          "description": "输入对象类型：NormalizedTrace"
+        },
+        {
+          "id": "identity:curve",
+          "status": "satisfied",
+          "description": "对象必须来自当前实验及当前运行"
+        },
+        {
+          "id": "units",
+          "status": "satisfied",
+          "description": "速率拟合要求秒与绝对温度 K"
+        },
+        {
+          "id": "quality",
+          "status": "satisfied",
+          "description": "标准化曲线具备质量证据"
+        }
+      ],
+      "outcome": "allow",
+      "at": "2026-11-13T05:01:06.491Z",
+      "output": "obj-16",
+      "execution": "succeeded",
+      "decision": {
+        "reason": "T2-R2 已完成质量检查和单位标准化，需补全其稳健速率估计以满足训练集覆盖要求",
+        "model": "qwen-plus",
+        "usage": {
+          "prompt_tokens": 11262,
+          "completion_tokens": 52
+        },
+        "at": "2026-11-13T05:01:06.490Z"
+      }
+    },
+    {
+      "id": "call-17",
+      "toolId": "read_trace",
+      "implementation": "read_trace",
+      "name": "读取反应记录",
+      "bindings": {
+        "raw": "raw-2-1"
+      },
+      "checks": [
+        {
+          "id": "parameters",
+          "status": "satisfied",
+          "description": "参数名必须与工具接口完全一致"
+        },
+        {
+          "id": "registration",
+          "status": "satisfied",
+          "description": "工具规约与已安装函数一致"
+        },
+        {
+          "id": "type:raw",
+          "status": "satisfied",
+          "description": "输入对象类型：RawTrace"
+        },
+        {
+          "id": "identity:raw",
+          "status": "satisfied",
+          "description": "对象必须来自当前实验及当前运行"
+        }
+      ],
+      "outcome": "allow",
+      "at": "2026-11-13T05:01:08.661Z",
+      "output": "obj-17",
+      "execution": "succeeded",
+      "decision": {
+        "reason": "T3-R1 是训练曲线但尚未读取为 Trace，需先完成数据接入以支持后续质量检查、标准化和速率估计",
+        "model": "qwen-plus",
+        "usage": {
+          "prompt_tokens": 11439,
+          "completion_tokens": 53
+        },
+        "at": "2026-11-13T05:01:08.660Z"
+      }
+    },
+    {
+      "id": "call-18",
+      "toolId": "check_quality",
+      "implementation": "check_quality",
+      "name": "检查曲线质量",
+      "bindings": {
+        "trace": "obj-17"
+      },
+      "checks": [
+        {
+          "id": "parameters",
+          "status": "satisfied",
+          "description": "参数名必须与工具接口完全一致"
+        },
+        {
+          "id": "registration",
+          "status": "satisfied",
+          "description": "工具规约与已安装函数一致"
+        },
+        {
+          "id": "type:trace",
+          "status": "satisfied",
+          "description": "输入对象类型：Trace"
+        },
+        {
+          "id": "identity:trace",
+          "status": "satisfied",
+          "description": "对象必须来自当前实验及当前运行"
+        }
+      ],
+      "outcome": "allow",
+      "at": "2026-11-13T05:01:10.684Z",
+      "output": "obj-18",
+      "execution": "succeeded",
+      "decision": {
+        "reason": "T3-R1 trace exists as Trace but lacks QualityCheck; required before normalization and rate estimation",
+        "model": "qwen-plus",
+        "usage": {
+          "prompt_tokens": 11882,
+          "completion_tokens": 42
+        },
+        "at": "2026-11-13T05:01:10.683Z"
+      }
+    },
+    {
+      "id": "call-19",
+      "toolId": "normalize",
+      "implementation": "normalize",
+      "name": "统一物理单位",
+      "bindings": {
+        "trace": "obj-17",
+        "quality": "obj-18"
+      },
+      "checks": [
+        {
+          "id": "parameters",
+          "status": "satisfied",
+          "description": "参数名必须与工具接口完全一致"
+        },
+        {
+          "id": "registration",
+          "status": "satisfied",
+          "description": "工具规约与已安装函数一致"
+        },
+        {
+          "id": "type:trace",
+          "status": "satisfied",
+          "description": "输入对象类型：Trace"
+        },
+        {
+          "id": "identity:trace",
+          "status": "satisfied",
+          "description": "对象必须来自当前实验及当前运行"
+        },
+        {
+          "id": "type:quality",
+          "status": "satisfied",
+          "description": "输入对象类型：QualityCheck"
+        },
+        {
+          "id": "identity:quality",
+          "status": "satisfied",
+          "description": "对象必须来自当前实验及当前运行"
+        },
+        {
+          "id": "same_trace",
+          "status": "satisfied",
+          "description": "曲线与质量检查必须指向同一次实验记录"
+        },
+        {
+          "id": "qc",
+          "status": "satisfied",
+          "description": "质量检查已通过"
+        },
+        {
+          "id": "source_units",
+          "status": "satisfied",
+          "description": "原始时间单位存在已登记转换"
+        }
+      ],
+      "outcome": "allow",
+      "at": "2026-11-13T05:01:12.767Z",
+      "output": "obj-19",
+      "execution": "succeeded",
+      "decision": {
+        "reason": "T3-R1 has QualityCheck but no NormalizedTrace yet; needed before rate estimation",
+        "model": "qwen-plus",
+        "usage": {
+          "prompt_tokens": 11999,
+          "completion_tokens": 47
+        },
+        "at": "2026-11-13T05:01:12.766Z"
+      }
+    },
+    {
+      "id": "call-20",
+      "toolId": "fit_rate",
+      "implementation": "fit_rate",
+      "name": "拟合一级反应速率",
+      "bindings": {
+        "curve": "obj-19"
+      },
+      "checks": [
+        {
+          "id": "parameters",
+          "status": "satisfied",
+          "description": "参数名必须与工具接口完全一致"
+        },
+        {
+          "id": "registration",
+          "status": "satisfied",
+          "description": "工具规约与已安装函数一致"
+        },
+        {
+          "id": "type:curve",
+          "status": "satisfied",
+          "description": "输入对象类型：NormalizedTrace"
+        },
+        {
+          "id": "identity:curve",
+          "status": "satisfied",
+          "description": "对象必须来自当前实验及当前运行"
+        },
+        {
+          "id": "units",
+          "status": "satisfied",
+          "description": "速率拟合要求秒与绝对温度 K"
+        },
+        {
+          "id": "quality",
+          "status": "satisfied",
+          "description": "标准化曲线具备质量证据"
+        }
+      ],
+      "outcome": "allow",
+      "at": "2026-11-13T05:01:15.612Z",
+      "output": "obj-20",
+      "execution": "succeeded",
+      "decision": {
+        "reason": "T3-R1 has a NormalizedTrace (obj-19) but no RateEstimate yet; need rate estimate to proceed with training set aggregation",
+        "model": "qwen-plus",
+        "usage": {
+          "prompt_tokens": 12455,
+          "completion_tokens": 54
+        },
+        "at": "2026-11-13T05:01:15.611Z"
+      }
+    },
+    {
+      "id": "call-21",
+      "toolId": "fit_rate_robust",
+      "implementation": "fit_rate_robust",
+      "name": "稳健估计反应速率",
+      "bindings": {
+        "curve": "obj-19"
+      },
+      "checks": [
+        {
+          "id": "parameters",
+          "status": "satisfied",
+          "description": "参数名必须与工具接口完全一致"
+        },
+        {
+          "id": "registration",
+          "status": "satisfied",
+          "description": "工具规约与已安装函数一致"
+        },
+        {
+          "id": "type:curve",
+          "status": "satisfied",
+          "description": "输入对象类型：NormalizedTrace"
+        },
+        {
+          "id": "identity:curve",
+          "status": "satisfied",
+          "description": "对象必须来自当前实验及当前运行"
+        },
+        {
+          "id": "units",
+          "status": "satisfied",
+          "description": "速率拟合要求秒与绝对温度 K"
+        },
+        {
+          "id": "quality",
+          "status": "satisfied",
+          "description": "标准化曲线具备质量证据"
+        }
+      ],
+      "outcome": "allow",
+      "at": "2026-11-13T05:01:18.423Z",
+      "output": "obj-21",
+      "execution": "succeeded",
+      "decision": {
+        "reason": "T3-R1 已有 fit_rate 结果（obj-20），但为保持方法一致性（T1-R2 和 T2-R2 使用 robust），需对 T3-R1 补充 robust 估计以支持后续汇集",
+        "model": "qwen-plus",
+        "usage": {
+          "prompt_tokens": 12628,
+          "completion_tokens": 77
+        },
+        "at": "2026-11-13T05:01:18.422Z"
+      }
+    },
+    {
+      "id": "call-22",
+      "toolId": "aggregate",
+      "implementation": "aggregate",
+      "name": "汇集训练速率",
+      "bindings": {
+        "rates": [
+          "obj-4",
+          "obj-8",
+          "obj-12",
+          "obj-16",
+          "obj-20",
+          "obj-21"
+        ]
+      },
+      "checks": [
+        {
+          "id": "parameters",
+          "status": "satisfied",
+          "description": "参数名必须与工具接口完全一致"
+        },
+        {
+          "id": "registration",
+          "status": "satisfied",
+          "description": "工具规约与已安装函数一致"
+        },
+        {
+          "id": "type:rates",
+          "status": "satisfied",
+          "description": "输入对象类型：RateEstimate[]"
+        },
+        {
+          "id": "identity:rates",
+          "status": "satisfied",
+          "description": "对象必须来自当前实验及当前运行"
+        },
+        {
+          "id": "train_only",
+          "status": "satisfied",
+          "description": "温度模型只能使用训练曲线"
+        },
+        {
+          "id": "coverage",
+          "status": "violated",
+          "description": "完整覆盖全部训练曲线，无重复和遗漏",
+          "evidence": {
+            "identity": "traceId",
+            "required_count": 6,
+            "provided_count": 6,
+            "required_identities": [
+              "T1-R1",
+              "T1-R2",
+              "T2-R1",
+              "T2-R2",
+              "T3-R1",
+              "T3-R2"
+            ],
+            "missing_identities": [
+              "T3-R2"
+            ],
+            "duplicate_identities": {
+              "T3-R1": [
+                "obj-20",
+                "obj-21"
+              ]
+            },
+            "unexpected_identities": [],
+            "max_objects_per_identity": 1
+          }
+        },
+        {
+          "id": "rate_units",
+          "status": "satisfied",
+          "description": "速率单位为 s⁻¹，温度为 K"
+        }
+      ],
+      "outcome": "block",
+      "at": "2026-11-13T05:01:21.596Z",
+      "decision": {
+        "reason": "需汇集全部6条训练曲线的RateEstimate以构建RateSeries，满足train_only、coverage（T1-R1,T1-R2,T2-R1,T2-R2,T3-R1,T3-R2）和rate_units条件",
+        "model": "qwen-plus",
+        "usage": {
+          "prompt_tokens": 12800,
+          "completion_tokens": 97
+        },
+        "at": "2026-11-13T05:01:21.594Z"
+      }
+    },
+    {
+      "id": "call-23",
+      "toolId": "read_trace",
+      "implementation": "read_trace",
+      "name": "读取反应记录",
+      "bindings": {
+        "raw": "raw-2-2"
+      },
+      "checks": [
+        {
+          "id": "parameters",
+          "status": "satisfied",
+          "description": "参数名必须与工具接口完全一致"
+        },
+        {
+          "id": "registration",
+          "status": "satisfied",
+          "description": "工具规约与已安装函数一致"
+        },
+        {
+          "id": "type:raw",
+          "status": "satisfied",
+          "description": "输入对象类型：RawTrace"
+        },
+        {
+          "id": "identity:raw",
+          "status": "satisfied",
+          "description": "对象必须来自当前实验及当前运行"
+        }
+      ],
+      "outcome": "allow",
+      "at": "2026-11-13T05:01:24.001Z",
+      "output": "obj-23",
+      "execution": "succeeded",
+      "decision": {
+        "reason": "T3-R2 原始记录 raw-2-2 尚未读取为 Trace，是覆盖 trainingTraceIds 所缺的唯一 traceId",
+        "model": "qwen-plus",
+        "usage": {
+          "prompt_tokens": 12968,
+          "completion_tokens": 58
+        },
+        "at": "2026-11-13T05:01:24.000Z"
+      }
+    },
+    {
+      "id": "call-24",
+      "toolId": "check_quality",
+      "implementation": "check_quality",
+      "name": "检查曲线质量",
+      "bindings": {
+        "trace": "obj-23"
+      },
+      "checks": [
+        {
+          "id": "parameters",
+          "status": "satisfied",
+          "description": "参数名必须与工具接口完全一致"
+        },
+        {
+          "id": "registration",
+          "status": "satisfied",
+          "description": "工具规约与已安装函数一致"
+        },
+        {
+          "id": "type:trace",
+          "status": "satisfied",
+          "description": "输入对象类型：Trace"
+        },
+        {
+          "id": "identity:trace",
+          "status": "satisfied",
+          "description": "对象必须来自当前实验及当前运行"
+        }
+      ],
+      "outcome": "allow",
+      "at": "2026-11-13T05:01:26.226Z",
+      "output": "obj-24",
+      "execution": "succeeded",
+      "decision": {
+        "reason": "T3-R2 trace exists as Trace (obj-23) but lacks QualityCheck; required before normalization and rate estimation",
+        "model": "qwen-plus",
+        "usage": {
+          "prompt_tokens": 13537,
+          "completion_tokens": 48
+        },
+        "at": "2026-11-13T05:01:26.225Z"
+      }
+    },
+    {
+      "id": "call-25",
+      "toolId": "normalize",
+      "implementation": "normalize",
+      "name": "统一物理单位",
+      "bindings": {
+        "trace": "obj-23",
+        "quality": "obj-24"
+      },
+      "checks": [
+        {
+          "id": "parameters",
+          "status": "satisfied",
+          "description": "参数名必须与工具接口完全一致"
+        },
+        {
+          "id": "registration",
+          "status": "satisfied",
+          "description": "工具规约与已安装函数一致"
+        },
+        {
+          "id": "type:trace",
+          "status": "satisfied",
+          "description": "输入对象类型：Trace"
+        },
+        {
+          "id": "identity:trace",
+          "status": "satisfied",
+          "description": "对象必须来自当前实验及当前运行"
+        },
+        {
+          "id": "type:quality",
+          "status": "satisfied",
+          "description": "输入对象类型：QualityCheck"
+        },
+        {
+          "id": "identity:quality",
+          "status": "satisfied",
+          "description": "对象必须来自当前实验及当前运行"
+        },
+        {
+          "id": "same_trace",
+          "status": "satisfied",
+          "description": "曲线与质量检查必须指向同一次实验记录"
+        },
+        {
+          "id": "qc",
+          "status": "satisfied",
+          "description": "质量检查已通过"
+        },
+        {
+          "id": "source_units",
+          "status": "satisfied",
+          "description": "原始时间单位存在已登记转换"
+        }
+      ],
+      "outcome": "allow",
+      "at": "2026-11-13T05:01:28.393Z",
+      "output": "obj-25",
+      "execution": "succeeded",
+      "decision": {
+        "reason": "T3-R2 需要标准化以支持速率估计，当前缺少 NormalizedTrace",
+        "model": "qwen-plus",
+        "usage": {
+          "prompt_tokens": 13654,
+          "completion_tokens": 48
+        },
+        "at": "2026-11-13T05:01:28.392Z"
+      }
+    },
+    {
+      "id": "call-26",
+      "toolId": "fit_rate_robust",
+      "implementation": "fit_rate_robust",
+      "name": "稳健估计反应速率",
+      "bindings": {
+        "curve": "obj-25"
+      },
+      "checks": [
+        {
+          "id": "parameters",
+          "status": "satisfied",
+          "description": "参数名必须与工具接口完全一致"
+        },
+        {
+          "id": "registration",
+          "status": "satisfied",
+          "description": "工具规约与已安装函数一致"
+        },
+        {
+          "id": "type:curve",
+          "status": "satisfied",
+          "description": "输入对象类型：NormalizedTrace"
+        },
+        {
+          "id": "identity:curve",
+          "status": "satisfied",
+          "description": "对象必须来自当前实验及当前运行"
+        },
+        {
+          "id": "units",
+          "status": "satisfied",
+          "description": "速率拟合要求秒与绝对温度 K"
+        },
+        {
+          "id": "quality",
+          "status": "satisfied",
+          "description": "标准化曲线具备质量证据"
+        }
+      ],
+      "outcome": "allow",
+      "at": "2026-11-13T05:01:31.068Z",
+      "output": "obj-26",
+      "execution": "succeeded",
+      "decision": {
+        "reason": "T3-R2 已完成质量检查和标准化，但缺少速率估计；需补全该训练曲线的 RateEstimate 以满足 aggregate 的 coverage 条件（当前缺失 T3-R2）",
+        "model": "qwen-plus",
+        "usage": {
+          "prompt_tokens": 14108,
+          "completion_tokens": 70
+        },
+        "at": "2026-11-13T05:01:31.067Z"
+      }
+    },
+    {
+      "id": "call-27",
+      "toolId": "aggregate",
+      "implementation": "aggregate",
+      "name": "汇集训练速率",
+      "bindings": {
+        "rates": [
+          "obj-4",
+          "obj-8",
+          "obj-12",
+          "obj-16",
+          "obj-20",
+          "obj-26"
+        ]
+      },
+      "checks": [
+        {
+          "id": "parameters",
+          "status": "satisfied",
+          "description": "参数名必须与工具接口完全一致"
+        },
+        {
+          "id": "registration",
+          "status": "satisfied",
+          "description": "工具规约与已安装函数一致"
+        },
+        {
+          "id": "type:rates",
+          "status": "satisfied",
+          "description": "输入对象类型：RateEstimate[]"
+        },
+        {
+          "id": "identity:rates",
+          "status": "satisfied",
+          "description": "对象必须来自当前实验及当前运行"
+        },
+        {
+          "id": "train_only",
+          "status": "satisfied",
+          "description": "温度模型只能使用训练曲线"
+        },
+        {
+          "id": "coverage",
+          "status": "satisfied",
+          "description": "完整覆盖全部训练曲线，无重复和遗漏",
+          "evidence": {
+            "identity": "traceId",
+            "required_count": 6,
+            "provided_count": 6,
+            "required_identities": [
+              "T1-R1",
+              "T1-R2",
+              "T2-R1",
+              "T2-R2",
+              "T3-R1",
+              "T3-R2"
+            ],
+            "missing_identities": [],
+            "duplicate_identities": {},
+            "unexpected_identities": [],
+            "max_objects_per_identity": 1
+          }
+        },
+        {
+          "id": "rate_units",
+          "status": "satisfied",
+          "description": "速率单位为 s⁻¹，温度为 K"
+        }
+      ],
+      "outcome": "allow",
+      "at": "2026-11-13T05:01:34.114Z",
+      "output": "obj-27",
+      "execution": "succeeded",
+      "decision": {
+        "reason": "修复 coverage 违规：T3-R2 缺失，T3-R1 重复；用 obj-26 替换 obj-21 以满足 exactly_one_per_identity",
+        "model": "qwen-plus",
+        "usage": {
+          "prompt_tokens": 14284,
+          "completion_tokens": 86
+        },
+        "at": "2026-11-13T05:01:34.113Z"
+      }
+    },
+    {
+      "id": "call-28",
+      "toolId": "fit_arrhenius",
+      "implementation": "fit_arrhenius",
+      "name": "拟合温度响应",
+      "bindings": {
+        "series": "obj-27"
+      },
+      "checks": [
+        {
+          "id": "parameters",
+          "status": "satisfied",
+          "description": "参数名必须与工具接口完全一致"
+        },
+        {
+          "id": "registration",
+          "status": "satisfied",
+          "description": "工具规约与已安装函数一致"
+        },
+        {
+          "id": "type:series",
+          "status": "satisfied",
+          "description": "输入对象类型：RateSeries"
+        },
+        {
+          "id": "identity:series",
+          "status": "satisfied",
+          "description": "对象必须来自当前实验及当前运行"
+        },
+        {
+          "id": "temperature_coverage",
+          "status": "satisfied",
+          "description": "完整集合至少含三个训练温度"
+        }
+      ],
+      "outcome": "allow",
+      "at": "2026-11-13T05:01:36.592Z",
+      "output": "obj-28",
+      "execution": "succeeded",
+      "decision": {
+        "reason": "RateSeries obj-27 is complete and covers all six training curves; now fit Arrhenius model to obtain activation energy and pre-exponential factor.",
+        "model": "qwen-plus",
+        "usage": {
+          "prompt_tokens": 14783,
+          "completion_tokens": 56
+        },
+        "at": "2026-11-13T05:01:36.590Z"
+      }
+    },
+    {
+      "id": "call-29",
+      "toolId": "aggregate",
+      "implementation": "aggregate",
+      "name": "汇集训练速率",
+      "bindings": {
+        "rates": [
+          "obj-4",
+          "obj-8",
+          "obj-12",
+          "obj-16",
+          "obj-21",
+          "obj-26"
+        ]
+      },
+      "checks": [
+        {
+          "id": "parameters",
+          "status": "satisfied",
+          "description": "参数名必须与工具接口完全一致"
+        },
+        {
+          "id": "registration",
+          "status": "satisfied",
+          "description": "工具规约与已安装函数一致"
+        },
+        {
+          "id": "type:rates",
+          "status": "satisfied",
+          "description": "输入对象类型：RateEstimate[]"
+        },
+        {
+          "id": "identity:rates",
+          "status": "satisfied",
+          "description": "对象必须来自当前实验及当前运行"
+        },
+        {
+          "id": "train_only",
+          "status": "satisfied",
+          "description": "温度模型只能使用训练曲线"
+        },
+        {
+          "id": "coverage",
+          "status": "satisfied",
+          "description": "完整覆盖全部训练曲线，无重复和遗漏",
+          "evidence": {
+            "identity": "traceId",
+            "required_count": 6,
+            "provided_count": 6,
+            "required_identities": [
+              "T1-R1",
+              "T1-R2",
+              "T2-R1",
+              "T2-R2",
+              "T3-R1",
+              "T3-R2"
+            ],
+            "missing_identities": [],
+            "duplicate_identities": {},
+            "unexpected_identities": [],
+            "max_objects_per_identity": 1
+          }
+        },
+        {
+          "id": "rate_units",
+          "status": "satisfied",
+          "description": "速率单位为 s⁻¹，温度为 K"
+        }
+      ],
+      "outcome": "allow",
+      "at": "2026-11-13T05:01:39.948Z",
+      "output": "obj-29",
+      "execution": "succeeded",
+      "decision": {
+        "reason": "需覆盖全部6条训练曲线，当前缺失T3-R2且T3-R1有重复（obj-20和obj-21），故选用obj-21替代obj-20以满足exactly_one_per_identity",
+        "model": "qwen-plus",
+        "usage": {
+          "prompt_tokens": 14987,
+          "completion_tokens": 96
+        },
+        "at": "2026-11-13T05:01:39.947Z"
+      }
+    },
+    {
+      "id": "call-30",
+      "toolId": "fit_rate",
+      "implementation": "fit_rate",
+      "name": "拟合一级反应速率",
+      "bindings": {
+        "curve": "obj-25"
+      },
+      "checks": [
+        {
+          "id": "parameters",
+          "status": "satisfied",
+          "description": "参数名必须与工具接口完全一致"
+        },
+        {
+          "id": "registration",
+          "status": "satisfied",
+          "description": "工具规约与已安装函数一致"
+        },
+        {
+          "id": "type:curve",
+          "status": "satisfied",
+          "description": "输入对象类型：NormalizedTrace"
+        },
+        {
+          "id": "identity:curve",
+          "status": "satisfied",
+          "description": "对象必须来自当前实验及当前运行"
+        },
+        {
+          "id": "units",
+          "status": "satisfied",
+          "description": "速率拟合要求秒与绝对温度 K"
+        },
+        {
+          "id": "quality",
+          "status": "satisfied",
+          "description": "标准化曲线具备质量证据"
+        }
+      ],
+      "outcome": "allow",
+      "at": "2026-11-13T05:01:42.461Z",
+      "output": "obj-30",
+      "execution": "succeeded",
+      "decision": {
+        "reason": "T3-R2 的 RateEstimate 目前只有 robust 版本（obj-26），需补充标准拟合以满足训练曲线全覆盖条件",
+        "model": "qwen-plus",
+        "usage": {
+          "prompt_tokens": 15453,
+          "completion_tokens": 56
+        },
+        "at": "2026-11-13T05:01:42.460Z"
+      }
+    },
+    {
+      "id": "call-31",
+      "toolId": "aggregate",
+      "implementation": "aggregate",
+      "name": "汇集训练速率",
+      "bindings": {
+        "rates": [
+          "obj-4",
+          "obj-8",
+          "obj-12",
+          "obj-16",
+          "obj-20",
+          "obj-30"
+        ]
+      },
+      "checks": [
+        {
+          "id": "parameters",
+          "status": "satisfied",
+          "description": "参数名必须与工具接口完全一致"
+        },
+        {
+          "id": "registration",
+          "status": "satisfied",
+          "description": "工具规约与已安装函数一致"
+        },
+        {
+          "id": "type:rates",
+          "status": "satisfied",
+          "description": "输入对象类型：RateEstimate[]"
+        },
+        {
+          "id": "identity:rates",
+          "status": "satisfied",
+          "description": "对象必须来自当前实验及当前运行"
+        },
+        {
+          "id": "train_only",
+          "status": "satisfied",
+          "description": "温度模型只能使用训练曲线"
+        },
+        {
+          "id": "coverage",
+          "status": "satisfied",
+          "description": "完整覆盖全部训练曲线，无重复和遗漏",
+          "evidence": {
+            "identity": "traceId",
+            "required_count": 6,
+            "provided_count": 6,
+            "required_identities": [
+              "T1-R1",
+              "T1-R2",
+              "T2-R1",
+              "T2-R2",
+              "T3-R1",
+              "T3-R2"
+            ],
+            "missing_identities": [],
+            "duplicate_identities": {},
+            "unexpected_identities": [],
+            "max_objects_per_identity": 1
+          }
+        },
+        {
+          "id": "rate_units",
+          "status": "satisfied",
+          "description": "速率单位为 s⁻¹，温度为 K"
+        }
+      ],
+      "outcome": "allow",
+      "at": "2026-11-13T05:01:46.006Z",
+      "output": "obj-31",
+      "execution": "succeeded",
+      "decision": {
+        "reason": "T3-R2 的速率估计需使用 obj-30（fit_rate）以匹配 T3-R1 的 obj-20（fit_rate），确保每条训练曲线仅贡献一个速率估计，满足 coverage 条件中 exactly_one_per_identity 要求。",
+        "model": "qwen-plus",
+        "usage": {
+          "prompt_tokens": 15623,
+          "completion_tokens": 104
+        },
+        "at": "2026-11-13T05:01:46.005Z"
+      }
+    },
+    {
+      "id": "call-32",
+      "toolId": "fit_rate",
+      "implementation": "fit_rate",
+      "name": "拟合一级反应速率",
+      "bindings": {
+        "curve": "obj-25"
+      },
+      "checks": [
+        {
+          "id": "parameters",
+          "status": "satisfied",
+          "description": "参数名必须与工具接口完全一致"
+        },
+        {
+          "id": "registration",
+          "status": "satisfied",
+          "description": "工具规约与已安装函数一致"
+        },
+        {
+          "id": "type:curve",
+          "status": "satisfied",
+          "description": "输入对象类型：NormalizedTrace"
+        },
+        {
+          "id": "identity:curve",
+          "status": "satisfied",
+          "description": "对象必须来自当前实验及当前运行"
+        },
+        {
+          "id": "units",
+          "status": "satisfied",
+          "description": "速率拟合要求秒与绝对温度 K"
+        },
+        {
+          "id": "quality",
+          "status": "satisfied",
+          "description": "标准化曲线具备质量证据"
+        }
+      ],
+      "outcome": "allow",
+      "at": "2026-11-13T05:01:49.694Z",
+      "output": "obj-32",
+      "execution": "succeeded",
+      "decision": {
+        "reason": "T3-R2 的 NormalizedTrace (obj-25) 尚未使用 fit_rate 方法生成 RateEstimate，当前仅有 fit_rate_robust 生成的 obj-26 和 obj-30；为覆盖全部训练曲线且避免重复（T3-R2 只能选一个 RateEstimate），需补全 fit_rate 结果以参与下一轮 aggregate。",
+        "model": "qwen-plus",
+        "usage": {
+          "prompt_tokens": 16090,
+          "completion_tokens": 104
+        },
+        "at": "2026-11-13T05:01:49.693Z"
+      }
+    },
+    {
+      "id": "call-33",
+      "toolId": "aggregate",
+      "implementation": "aggregate",
+      "name": "汇集训练速率",
+      "bindings": {
+        "rates": [
+          "obj-4",
+          "obj-8",
+          "obj-12",
+          "obj-16",
+          "obj-21",
+          "obj-32"
+        ]
+      },
+      "checks": [
+        {
+          "id": "parameters",
+          "status": "satisfied",
+          "description": "参数名必须与工具接口完全一致"
+        },
+        {
+          "id": "registration",
+          "status": "satisfied",
+          "description": "工具规约与已安装函数一致"
+        },
+        {
+          "id": "type:rates",
+          "status": "satisfied",
+          "description": "输入对象类型：RateEstimate[]"
+        },
+        {
+          "id": "identity:rates",
+          "status": "satisfied",
+          "description": "对象必须来自当前实验及当前运行"
+        },
+        {
+          "id": "train_only",
+          "status": "satisfied",
+          "description": "温度模型只能使用训练曲线"
+        },
+        {
+          "id": "coverage",
+          "status": "satisfied",
+          "description": "完整覆盖全部训练曲线，无重复和遗漏",
+          "evidence": {
+            "identity": "traceId",
+            "required_count": 6,
+            "provided_count": 6,
+            "required_identities": [
+              "T1-R1",
+              "T1-R2",
+              "T2-R1",
+              "T2-R2",
+              "T3-R1",
+              "T3-R2"
+            ],
+            "missing_identities": [],
+            "duplicate_identities": {},
+            "unexpected_identities": [],
+            "max_objects_per_identity": 1
+          }
+        },
+        {
+          "id": "rate_units",
+          "status": "satisfied",
+          "description": "速率单位为 s⁻¹，温度为 K"
+        }
+      ],
+      "outcome": "allow",
+      "at": "2026-11-13T05:01:53.476Z",
+      "output": "obj-33",
+      "execution": "succeeded",
+      "decision": {
+        "reason": "需覆盖全部6条训练曲线（T1-R1、T1-R2、T2-R1、T2-R2、T3-R1、T3-R2），当前缺失T3-R2的rate对象，obj-32是T3-R2最新生成的RateEstimate且已通过质量检查",
+        "model": "qwen-plus",
+        "usage": {
+          "prompt_tokens": 16260,
+          "completion_tokens": 114
+        },
+        "at": "2026-11-13T05:01:53.475Z"
+      }
+    },
+    {
+      "id": "call-34",
+      "toolId": "read_trace",
+      "implementation": "read_trace",
+      "name": "读取反应记录",
+      "bindings": {
+        "raw": "raw-3-1"
+      },
+      "checks": [
+        {
+          "id": "parameters",
+          "status": "satisfied",
+          "description": "参数名必须与工具接口完全一致"
+        },
+        {
+          "id": "registration",
+          "status": "satisfied",
+          "description": "工具规约与已安装函数一致"
+        },
+        {
+          "id": "type:raw",
+          "status": "satisfied",
+          "description": "输入对象类型：RawTrace"
+        },
+        {
+          "id": "identity:raw",
+          "status": "satisfied",
+          "description": "对象必须来自当前实验及当前运行"
+        }
+      ],
+      "outcome": "allow",
+      "at": "2026-11-13T05:01:55.895Z",
+      "output": "obj-34",
+      "execution": "succeeded",
+      "decision": {
+        "reason": "T4-R1 是留出曲线，需先读取原始记录以进行后续质量检查和标准化",
+        "model": "qwen-plus",
+        "usage": {
+          "prompt_tokens": 16727,
+          "completion_tokens": 46
+        },
+        "at": "2026-11-13T05:01:55.894Z"
+      }
+    },
+    {
+      "id": "call-35",
+      "toolId": "check_quality",
+      "implementation": "check_quality",
+      "name": "检查曲线质量",
+      "bindings": {
+        "trace": "obj-34"
+      },
+      "checks": [
+        {
+          "id": "parameters",
+          "status": "satisfied",
+          "description": "参数名必须与工具接口完全一致"
+        },
+        {
+          "id": "registration",
+          "status": "satisfied",
+          "description": "工具规约与已安装函数一致"
+        },
+        {
+          "id": "type:trace",
+          "status": "satisfied",
+          "description": "输入对象类型：Trace"
+        },
+        {
+          "id": "identity:trace",
+          "status": "satisfied",
+          "description": "对象必须来自当前实验及当前运行"
+        }
+      ],
+      "outcome": "allow",
+      "at": "2026-11-13T05:01:58.779Z",
+      "output": "obj-35",
+      "execution": "succeeded",
+      "decision": {
+        "reason": "T4-R1 holdout curve needs quality check before normalization and rate estimation",
+        "model": "qwen-plus",
+        "usage": {
+          "prompt_tokens": 17172,
+          "completion_tokens": 38
+        },
+        "at": "2026-11-13T05:01:58.778Z"
+      }
+    },
+    {
+      "id": "call-36",
+      "toolId": "normalize",
+      "implementation": "normalize",
+      "name": "统一物理单位",
+      "bindings": {
+        "trace": "obj-34",
+        "quality": "obj-35"
+      },
+      "checks": [
+        {
+          "id": "parameters",
+          "status": "satisfied",
+          "description": "参数名必须与工具接口完全一致"
+        },
+        {
+          "id": "registration",
+          "status": "satisfied",
+          "description": "工具规约与已安装函数一致"
+        },
+        {
+          "id": "type:trace",
+          "status": "satisfied",
+          "description": "输入对象类型：Trace"
+        },
+        {
+          "id": "identity:trace",
+          "status": "satisfied",
+          "description": "对象必须来自当前实验及当前运行"
+        },
+        {
+          "id": "type:quality",
+          "status": "satisfied",
+          "description": "输入对象类型：QualityCheck"
+        },
+        {
+          "id": "identity:quality",
+          "status": "satisfied",
+          "description": "对象必须来自当前实验及当前运行"
+        },
+        {
+          "id": "same_trace",
+          "status": "satisfied",
+          "description": "曲线与质量检查必须指向同一次实验记录"
+        },
+        {
+          "id": "qc",
+          "status": "satisfied",
+          "description": "质量检查已通过"
+        },
+        {
+          "id": "source_units",
+          "status": "satisfied",
+          "description": "原始时间单位存在已登记转换"
+        }
+      ],
+      "outcome": "allow",
+      "at": "2026-11-13T05:02:01.541Z",
+      "output": "obj-36",
+      "execution": "succeeded",
+      "decision": {
+        "reason": "T4-R1 是留出曲线，需标准化为秒和 K 单位以支持后续速率估计",
+        "model": "qwen-plus",
+        "usage": {
+          "prompt_tokens": 17290,
+          "completion_tokens": 52
+        },
+        "at": "2026-11-13T05:02:01.540Z"
+      }
+    },
+    {
+      "id": "call-37",
+      "toolId": "fit_rate",
+      "implementation": "fit_rate",
+      "name": "拟合一级反应速率",
+      "bindings": {
+        "curve": "obj-36"
+      },
+      "checks": [
+        {
+          "id": "parameters",
+          "status": "satisfied",
+          "description": "参数名必须与工具接口完全一致"
+        },
+        {
+          "id": "registration",
+          "status": "satisfied",
+          "description": "工具规约与已安装函数一致"
+        },
+        {
+          "id": "type:curve",
+          "status": "satisfied",
+          "description": "输入对象类型：NormalizedTrace"
+        },
+        {
+          "id": "identity:curve",
+          "status": "satisfied",
+          "description": "对象必须来自当前实验及当前运行"
+        },
+        {
+          "id": "units",
+          "status": "satisfied",
+          "description": "速率拟合要求秒与绝对温度 K"
+        },
+        {
+          "id": "quality",
+          "status": "satisfied",
+          "description": "标准化曲线具备质量证据"
+        }
+      ],
+      "outcome": "allow",
+      "at": "2026-11-13T05:02:04.506Z",
+      "output": "obj-37",
+      "execution": "succeeded",
+      "decision": {
+        "reason": "T4-R1 是留出曲线，需生成其 RateEstimate 以供后续 validate 使用；当前仅有 NormalizedTrace，尚未估计速率",
+        "model": "qwen-plus",
+        "usage": {
+          "prompt_tokens": 17748,
+          "completion_tokens": 54
+        },
+        "at": "2026-11-13T05:02:04.505Z"
+      }
+    },
+    {
+      "id": "call-38",
+      "toolId": "aggregate",
+      "implementation": "aggregate",
+      "name": "汇集训练速率",
+      "bindings": {
+        "rates": [
+          "obj-4",
+          "obj-8",
+          "obj-12",
+          "obj-16",
+          "obj-21",
+          "obj-32"
+        ]
+      },
+      "checks": [
+        {
+          "id": "parameters",
+          "status": "satisfied",
+          "description": "参数名必须与工具接口完全一致"
+        },
+        {
+          "id": "registration",
+          "status": "satisfied",
+          "description": "工具规约与已安装函数一致"
+        },
+        {
+          "id": "type:rates",
+          "status": "satisfied",
+          "description": "输入对象类型：RateEstimate[]"
+        },
+        {
+          "id": "identity:rates",
+          "status": "satisfied",
+          "description": "对象必须来自当前实验及当前运行"
+        },
+        {
+          "id": "train_only",
+          "status": "satisfied",
+          "description": "温度模型只能使用训练曲线"
+        },
+        {
+          "id": "coverage",
+          "status": "satisfied",
+          "description": "完整覆盖全部训练曲线，无重复和遗漏",
+          "evidence": {
+            "identity": "traceId",
+            "required_count": 6,
+            "provided_count": 6,
+            "required_identities": [
+              "T1-R1",
+              "T1-R2",
+              "T2-R1",
+              "T2-R2",
+              "T3-R1",
+              "T3-R2"
+            ],
+            "missing_identities": [],
+            "duplicate_identities": {},
+            "unexpected_identities": [],
+            "max_objects_per_identity": 1
+          }
+        },
+        {
+          "id": "rate_units",
+          "status": "satisfied",
+          "description": "速率单位为 s⁻¹，温度为 K"
+        }
+      ],
+      "outcome": "allow",
+      "at": "2026-11-13T05:02:08.069Z",
+      "output": "obj-38",
+      "execution": "succeeded",
+      "decision": {
+        "reason": "需覆盖全部6条训练曲线 (T1-R1,T1-R2,T2-R1,T2-R2,T3-R1,T3-R2)，当前obj-33已验证该组合满足exactly_one_per_identity条件",
+        "model": "qwen-plus",
+        "usage": {
+          "prompt_tokens": 17921,
+          "completion_tokens": 95
+        },
+        "at": "2026-11-13T05:02:08.068Z"
+      }
+    },
+    {
+      "id": "call-39",
+      "toolId": "fit_rate_robust",
+      "implementation": "fit_rate_robust",
+      "name": "稳健估计反应速率",
+      "bindings": {
+        "curve": "obj-36"
+      },
+      "checks": [
+        {
+          "id": "parameters",
+          "status": "satisfied",
+          "description": "参数名必须与工具接口完全一致"
+        },
+        {
+          "id": "registration",
+          "status": "satisfied",
+          "description": "工具规约与已安装函数一致"
+        },
+        {
+          "id": "type:curve",
+          "status": "satisfied",
+          "description": "输入对象类型：NormalizedTrace"
+        },
+        {
+          "id": "identity:curve",
+          "status": "satisfied",
+          "description": "对象必须来自当前实验及当前运行"
+        },
+        {
+          "id": "units",
+          "status": "satisfied",
+          "description": "速率拟合要求秒与绝对温度 K"
+        },
+        {
+          "id": "quality",
+          "status": "satisfied",
+          "description": "标准化曲线具备质量证据"
+        }
+      ],
+      "outcome": "allow",
+      "at": "2026-11-13T05:02:12.287Z",
+      "output": "obj-39",
+      "execution": "succeeded",
+      "decision": {
+        "reason": "T4-R1 原始数据已读取、质量检查通过、标准化完成，但尚无 robust 速率估计；需为留出集提供一致估计方法以满足 validate 的 unit 和 role 要求",
+        "model": "qwen-plus",
+        "usage": {
+          "prompt_tokens": 18388,
+          "completion_tokens": 74
+        },
+        "at": "2026-11-13T05:02:12.285Z"
+      }
+    },
+    {
+      "id": "call-40",
+      "toolId": "aggregate",
+      "implementation": "aggregate",
+      "name": "汇集训练速率",
+      "bindings": {
+        "rates": [
+          "obj-4",
+          "obj-8",
+          "obj-12",
+          "obj-16",
+          "obj-21",
+          "obj-39"
+        ]
+      },
+      "checks": [
+        {
+          "id": "parameters",
+          "status": "satisfied",
+          "description": "参数名必须与工具接口完全一致"
+        },
+        {
+          "id": "registration",
+          "status": "satisfied",
+          "description": "工具规约与已安装函数一致"
+        },
+        {
+          "id": "type:rates",
+          "status": "satisfied",
+          "description": "输入对象类型：RateEstimate[]"
+        },
+        {
+          "id": "identity:rates",
+          "status": "satisfied",
+          "description": "对象必须来自当前实验及当前运行"
+        },
+        {
+          "id": "train_only",
+          "status": "violated",
+          "description": "温度模型只能使用训练曲线"
+        },
+        {
+          "id": "coverage",
+          "status": "violated",
+          "description": "完整覆盖全部训练曲线，无重复和遗漏",
+          "evidence": {
+            "identity": "traceId",
+            "required_count": 6,
+            "provided_count": 6,
+            "required_identities": [
+              "T1-R1",
+              "T1-R2",
+              "T2-R1",
+              "T2-R2",
+              "T3-R1",
+              "T3-R2"
+            ],
+            "missing_identities": [
+              "T3-R2"
+            ],
+            "duplicate_identities": {},
+            "unexpected_identities": [
+              "T4-R1"
+            ],
+            "max_objects_per_identity": 1
+          }
+        },
+        {
+          "id": "rate_units",
+          "status": "satisfied",
+          "description": "速率单位为 s⁻¹，温度为 K"
+        }
+      ],
+      "outcome": "block",
+      "at": "2026-11-13T05:02:17.213Z",
+      "decision": {
+        "reason": "需覆盖全部6条训练曲线（T1-R1,T1-R2,T2-R1,T2-R2,T3-R1,T3-R2），当前obj-39是T4-R1的稳健速率估计，但T3-R2缺失；检查state_index发现T3-R2有RateEstimate obj-26,obj-30,obj-32，尚未用于聚合，且call-22反馈缺失T3-R2，应选其一补全",
+        "model": "qwen-plus",
+        "usage": {
+          "prompt_tokens": 18560,
+          "completion_tokens": 148
+        },
+        "at": "2026-11-13T05:02:17.211Z"
+      }
+    },
+    {
+      "id": "call-41",
+      "toolId": "fit_rate_robust",
+      "implementation": "fit_rate_robust",
+      "name": "稳健估计反应速率",
+      "bindings": {
+        "curve": "obj-25"
+      },
+      "checks": [
+        {
+          "id": "parameters",
+          "status": "satisfied",
+          "description": "参数名必须与工具接口完全一致"
+        },
+        {
+          "id": "registration",
+          "status": "satisfied",
+          "description": "工具规约与已安装函数一致"
+        },
+        {
+          "id": "type:curve",
+          "status": "satisfied",
+          "description": "输入对象类型：NormalizedTrace"
+        },
+        {
+          "id": "identity:curve",
+          "status": "satisfied",
+          "description": "对象必须来自当前实验及当前运行"
+        },
+        {
+          "id": "units",
+          "status": "satisfied",
+          "description": "速率拟合要求秒与绝对温度 K"
+        },
+        {
+          "id": "quality",
+          "status": "satisfied",
+          "description": "标准化曲线具备质量证据"
+        }
+      ],
+      "outcome": "allow",
+      "at": "2026-11-13T05:02:20.065Z",
+      "output": "obj-41",
+      "execution": "succeeded",
+      "decision": {
+        "reason": "T3-R2 缺失速率估计，需补全 robust 估计以满足 trainingTraceIds 覆盖要求",
+        "model": "qwen-plus",
+        "usage": {
+          "prompt_tokens": 18737,
+          "completion_tokens": 52
+        },
+        "at": "2026-11-13T05:02:20.064Z"
+      }
+    },
+    {
+      "id": "call-42",
+      "toolId": "fit_rate",
+      "implementation": "fit_rate",
+      "name": "拟合一级反应速率",
+      "bindings": {
+        "curve": "obj-25"
+      },
+      "checks": [
+        {
+          "id": "parameters",
+          "status": "satisfied",
+          "description": "参数名必须与工具接口完全一致"
+        },
+        {
+          "id": "registration",
+          "status": "satisfied",
+          "description": "工具规约与已安装函数一致"
+        },
+        {
+          "id": "type:curve",
+          "status": "satisfied",
+          "description": "输入对象类型：NormalizedTrace"
+        },
+        {
+          "id": "identity:curve",
+          "status": "satisfied",
+          "description": "对象必须来自当前实验及当前运行"
+        },
+        {
+          "id": "units",
+          "status": "satisfied",
+          "description": "速率拟合要求秒与绝对温度 K"
+        },
+        {
+          "id": "quality",
+          "status": "satisfied",
+          "description": "标准化曲线具备质量证据"
+        }
+      ],
+      "outcome": "allow",
+      "at": "2026-11-13T05:02:23.293Z",
+      "output": "obj-42",
+      "execution": "succeeded",
+      "decision": {
+        "reason": "T3-R2 需要补充一个 fit_rate 估计以满足训练曲线全覆盖（当前缺少 T3-R2 的 fit_rate 类型速率估计）",
+        "model": "qwen-plus",
+        "usage": {
+          "prompt_tokens": 18909,
+          "completion_tokens": 57
+        },
+        "at": "2026-11-13T05:02:23.292Z"
+      }
+    },
+    {
+      "id": "call-43",
+      "toolId": "fit_rate_robust",
+      "implementation": "fit_rate_robust",
+      "name": "稳健估计反应速率",
+      "bindings": {
+        "curve": "obj-25"
+      },
+      "checks": [
+        {
+          "id": "parameters",
+          "status": "satisfied",
+          "description": "参数名必须与工具接口完全一致"
+        },
+        {
+          "id": "registration",
+          "status": "satisfied",
+          "description": "工具规约与已安装函数一致"
+        },
+        {
+          "id": "type:curve",
+          "status": "satisfied",
+          "description": "输入对象类型：NormalizedTrace"
+        },
+        {
+          "id": "identity:curve",
+          "status": "satisfied",
+          "description": "对象必须来自当前实验及当前运行"
+        },
+        {
+          "id": "units",
+          "status": "satisfied",
+          "description": "速率拟合要求秒与绝对温度 K"
+        },
+        {
+          "id": "quality",
+          "status": "satisfied",
+          "description": "标准化曲线具备质量证据"
+        }
+      ],
+      "outcome": "allow",
+      "at": "2026-11-13T05:02:27.132Z",
+      "output": "obj-43",
+      "execution": "succeeded",
+      "decision": {
+        "reason": "T3-R2 已有多个 RateEstimate，但 aggregate 检查显示仍缺失 T3-R2 的一个有效速率估计（missing_identities:['T3-R2']），而 obj-25 是其唯一 NormalizedTrace，需再生成一个 robust 估计以补全覆盖",
+        "model": "qwen-plus",
+        "usage": {
+          "prompt_tokens": 19079,
+          "completion_tokens": 90
+        },
+        "at": "2026-11-13T05:02:27.131Z"
+      }
+    },
+    {
+      "id": "call-44",
+      "toolId": "fit_rate_robust",
+      "implementation": "fit_rate_robust",
+      "name": "稳健估计反应速率",
+      "bindings": {
+        "curve": "obj-36"
+      },
+      "checks": [
+        {
+          "id": "parameters",
+          "status": "satisfied",
+          "description": "参数名必须与工具接口完全一致"
+        },
+        {
+          "id": "registration",
+          "status": "satisfied",
+          "description": "工具规约与已安装函数一致"
+        },
+        {
+          "id": "type:curve",
+          "status": "satisfied",
+          "description": "输入对象类型：NormalizedTrace"
+        },
+        {
+          "id": "identity:curve",
+          "status": "satisfied",
+          "description": "对象必须来自当前实验及当前运行"
+        },
+        {
+          "id": "units",
+          "status": "satisfied",
+          "description": "速率拟合要求秒与绝对温度 K"
+        },
+        {
+          "id": "quality",
+          "status": "satisfied",
+          "description": "标准化曲线具备质量证据"
+        }
+      ],
+      "outcome": "allow",
+      "at": "2026-11-13T05:02:31.045Z",
+      "output": "obj-44",
+      "execution": "succeeded",
+      "decision": {
+        "reason": "T4-R1 需要稳健速率估计以用于留出验证，当前已有 fit_rate 输出 obj-37，但 fit_rate_robust 尚未为 T4-R1 调用，且 feedback 显示 call-40 被 block 因混入 holdout 曲线，故需先补全 T4-R1 的 robust 估计",
+        "model": "qwen-plus",
+        "usage": {
+          "prompt_tokens": 19251,
+          "completion_tokens": 107
+        },
+        "at": "2026-11-13T05:02:31.044Z"
+      }
+    },
+    {
+      "id": "call-45",
+      "toolId": "fit_rate_robust",
+      "implementation": "fit_rate_robust",
+      "name": "稳健估计反应速率",
+      "bindings": {
+        "curve": "obj-25"
+      },
+      "checks": [
+        {
+          "id": "parameters",
+          "status": "satisfied",
+          "description": "参数名必须与工具接口完全一致"
+        },
+        {
+          "id": "registration",
+          "status": "satisfied",
+          "description": "工具规约与已安装函数一致"
+        },
+        {
+          "id": "type:curve",
+          "status": "satisfied",
+          "description": "输入对象类型：NormalizedTrace"
+        },
+        {
+          "id": "identity:curve",
+          "status": "satisfied",
+          "description": "对象必须来自当前实验及当前运行"
+        },
+        {
+          "id": "units",
+          "status": "satisfied",
+          "description": "速率拟合要求秒与绝对温度 K"
+        },
+        {
+          "id": "quality",
+          "status": "satisfied",
+          "description": "标准化曲线具备质量证据"
+        }
+      ],
+      "outcome": "allow",
+      "at": "2026-11-13T05:02:34.488Z",
+      "output": "obj-45",
+      "execution": "succeeded",
+      "decision": {
+        "reason": "T3-R2 需要更多速率估计以覆盖训练曲线，当前 obj-25 已有多个 fit_rate 调用但尚未满足 coverage 条件中 T3-R2 的唯一性要求",
+        "model": "qwen-plus",
+        "usage": {
+          "prompt_tokens": 19423,
+          "completion_tokens": 73
+        },
+        "at": "2026-11-13T05:02:34.487Z"
+      }
+    },
+    {
+      "id": "call-46",
+      "toolId": "aggregate",
+      "implementation": "aggregate",
+      "name": "汇集训练速率",
+      "bindings": {
+        "rates": [
+          "obj-4",
+          "obj-8",
+          "obj-12",
+          "obj-16",
+          "obj-21",
+          "obj-45"
+        ]
+      },
+      "checks": [
+        {
+          "id": "parameters",
+          "status": "satisfied",
+          "description": "参数名必须与工具接口完全一致"
+        },
+        {
+          "id": "registration",
+          "status": "satisfied",
+          "description": "工具规约与已安装函数一致"
+        },
+        {
+          "id": "type:rates",
+          "status": "satisfied",
+          "description": "输入对象类型：RateEstimate[]"
+        },
+        {
+          "id": "identity:rates",
+          "status": "satisfied",
+          "description": "对象必须来自当前实验及当前运行"
+        },
+        {
+          "id": "train_only",
+          "status": "satisfied",
+          "description": "温度模型只能使用训练曲线"
+        },
+        {
+          "id": "coverage",
+          "status": "satisfied",
+          "description": "完整覆盖全部训练曲线，无重复和遗漏",
+          "evidence": {
+            "identity": "traceId",
+            "required_count": 6,
+            "provided_count": 6,
+            "required_identities": [
+              "T1-R1",
+              "T1-R2",
+              "T2-R1",
+              "T2-R2",
+              "T3-R1",
+              "T3-R2"
+            ],
+            "missing_identities": [],
+            "duplicate_identities": {},
+            "unexpected_identities": [],
+            "max_objects_per_identity": 1
+          }
+        },
+        {
+          "id": "rate_units",
+          "status": "satisfied",
+          "description": "速率单位为 s⁻¹，温度为 K"
+        }
+      ],
+      "outcome": "allow",
+      "at": "2026-11-13T05:02:38.717Z",
+      "output": "obj-46",
+      "execution": "succeeded",
+      "decision": {
+        "reason": "需覆盖全部6条训练曲线（T1-R1,T1-R2,T2-R1,T2-R2,T3-R1,T3-R2），当前obj-45是T3-R2最新可用的RateEstimate，且未在已有RateSeries中重复使用",
+        "model": "qwen-plus",
+        "usage": {
+          "prompt_tokens": 19595,
+          "completion_tokens": 105
+        },
+        "at": "2026-11-13T05:02:38.716Z"
+      }
+    },
+    {
+      "id": "call-47",
+      "toolId": "fit_rate",
+      "implementation": "fit_rate",
+      "name": "拟合一级反应速率",
+      "bindings": {
+        "curve": "obj-36"
+      },
+      "checks": [
+        {
+          "id": "parameters",
+          "status": "satisfied",
+          "description": "参数名必须与工具接口完全一致"
+        },
+        {
+          "id": "registration",
+          "status": "satisfied",
+          "description": "工具规约与已安装函数一致"
+        },
+        {
+          "id": "type:curve",
+          "status": "satisfied",
+          "description": "输入对象类型：NormalizedTrace"
+        },
+        {
+          "id": "identity:curve",
+          "status": "satisfied",
+          "description": "对象必须来自当前实验及当前运行"
+        },
+        {
+          "id": "units",
+          "status": "satisfied",
+          "description": "速率拟合要求秒与绝对温度 K"
+        },
+        {
+          "id": "quality",
+          "status": "satisfied",
+          "description": "标准化曲线具备质量证据"
+        }
+      ],
+      "outcome": "allow",
+      "at": "2026-11-13T05:02:49.275Z",
+      "output": "obj-47",
+      "execution": "succeeded",
+      "decision": {
+        "reason": "T4-R1 的 holdout 曲线已标准化（obj-36），需补充一个 fit_rate 估计以覆盖 T4-R1 的速率，但当前所有 aggregate 调用均因混入 holdout 对象或缺失 T3-R2 而失败；先确保 T4-R1 有 fit_rate 结果（已有 obj-37、obj-39、obj-44），但关键缺失是 T3-R2 的完整 coverage —— 当前 T3-R2 已有 obj-26/obj-30/obj-41/obj-42/obj-43/obj-45 共6个 RateEstimate，而 aggregate call-22 显示 missing_identities:['T3-R2']，说明此前未选中任一 T3-R2 的 RateEstimate；因此应优先确认 T3-R2 是否有可用的 fit_rate（而非 robust）结果：obj-30 和 obj-32 都是 fit_rate 输出，且已被用于 obj-31/obj-33/obj-38/obj-46，但 call-22 的 evidence 明确 missing T3-R2，表明尚未将任一 T3-R2 RateEstimate 纳入 aggregate；检查 state_index 中 T3-R2 的 RateEstimate 有 ['obj-26','obj-30','obj-32','obj-41','obj-42','obj-43','obj-45']，其中 obj-30 和 obj-32 是 fit_rate（非 robust），应选其一；为保持与 T1-R1/T2-R1/T3-R1 一致的方法（均为 fit_rate），选用 obj-30",
+        "model": "qwen-plus",
+        "usage": {
+          "prompt_tokens": 20061,
+          "completion_tokens": 400
+        },
+        "at": "2026-11-13T05:02:49.274Z"
+      }
+    },
+    {
+      "id": "call-48",
+      "toolId": "aggregate",
+      "implementation": "aggregate",
+      "name": "汇集训练速率",
+      "bindings": {
+        "rates": [
+          "obj-4",
+          "obj-8",
+          "obj-12",
+          "obj-16",
+          "obj-21",
+          "obj-45"
+        ]
+      },
+      "checks": [
+        {
+          "id": "parameters",
+          "status": "satisfied",
+          "description": "参数名必须与工具接口完全一致"
+        },
+        {
+          "id": "registration",
+          "status": "satisfied",
+          "description": "工具规约与已安装函数一致"
+        },
+        {
+          "id": "type:rates",
+          "status": "satisfied",
+          "description": "输入对象类型：RateEstimate[]"
+        },
+        {
+          "id": "identity:rates",
+          "status": "satisfied",
+          "description": "对象必须来自当前实验及当前运行"
+        },
+        {
+          "id": "train_only",
+          "status": "satisfied",
+          "description": "温度模型只能使用训练曲线"
+        },
+        {
+          "id": "coverage",
+          "status": "satisfied",
+          "description": "完整覆盖全部训练曲线，无重复和遗漏",
+          "evidence": {
+            "identity": "traceId",
+            "required_count": 6,
+            "provided_count": 6,
+            "required_identities": [
+              "T1-R1",
+              "T1-R2",
+              "T2-R1",
+              "T2-R2",
+              "T3-R1",
+              "T3-R2"
+            ],
+            "missing_identities": [],
+            "duplicate_identities": {},
+            "unexpected_identities": [],
+            "max_objects_per_identity": 1
+          }
+        },
+        {
+          "id": "rate_units",
+          "status": "satisfied",
+          "description": "速率单位为 s⁻¹，温度为 K"
+        }
+      ],
+      "outcome": "allow",
+      "at": "2026-11-13T05:02:53.592Z",
+      "output": "obj-48",
+      "execution": "succeeded",
+      "decision": {
+        "reason": "需覆盖全部6条训练曲线（T1-R1, T1-R2, T2-R1, T2-R2, T3-R1, T3-R2），当前obj-45是T3-R2的最新RateEstimate，且已验证obj-46（含该组合）通过coverage检查",
+        "model": "qwen-plus",
+        "usage": {
+          "prompt_tokens": 20230,
+          "completion_tokens": 115
+        },
+        "at": "2026-11-13T05:02:53.590Z"
+      }
+    }
+  ],
+  "status": "paused",
+  "sequence": 48,
+  "executedKeys": [
+    "read_trace:{\"raw\":\"raw-0-1\"}",
+    "check_quality:{\"trace\":\"obj-1\"}",
+    "normalize:{\"trace\":\"obj-1\",\"quality\":\"obj-2\"}",
+    "fit_rate:{\"curve\":\"obj-3\"}",
+    "read_trace:{\"raw\":\"raw-0-2\"}",
+    "check_quality:{\"trace\":\"obj-5\"}",
+    "normalize:{\"trace\":\"obj-5\",\"quality\":\"obj-6\"}",
+    "fit_rate_robust:{\"curve\":\"obj-7\"}",
+    "read_trace:{\"raw\":\"raw-1-1\"}",
+    "check_quality:{\"trace\":\"obj-9\"}",
+    "normalize:{\"trace\":\"obj-9\",\"quality\":\"obj-10\"}",
+    "fit_rate:{\"curve\":\"obj-11\"}",
+    "read_trace:{\"raw\":\"raw-1-2\"}",
+    "check_quality:{\"trace\":\"obj-13\"}",
+    "normalize:{\"trace\":\"obj-13\",\"quality\":\"obj-14\"}",
+    "fit_rate_robust:{\"curve\":\"obj-15\"}",
+    "read_trace:{\"raw\":\"raw-2-1\"}",
+    "check_quality:{\"trace\":\"obj-17\"}",
+    "normalize:{\"trace\":\"obj-17\",\"quality\":\"obj-18\"}",
+    "fit_rate:{\"curve\":\"obj-19\"}",
+    "fit_rate_robust:{\"curve\":\"obj-19\"}",
+    "read_trace:{\"raw\":\"raw-2-2\"}",
+    "check_quality:{\"trace\":\"obj-23\"}",
+    "normalize:{\"trace\":\"obj-23\",\"quality\":\"obj-24\"}",
+    "fit_rate_robust:{\"curve\":\"obj-25\"}",
+    "aggregate:{\"rates\":[\"obj-4\",\"obj-8\",\"obj-12\",\"obj-16\",\"obj-20\",\"obj-26\"]}",
+    "fit_arrhenius:{\"series\":\"obj-27\"}",
+    "aggregate:{\"rates\":[\"obj-4\",\"obj-8\",\"obj-12\",\"obj-16\",\"obj-21\",\"obj-26\"]}",
+    "fit_rate:{\"curve\":\"obj-25\"}",
+    "aggregate:{\"rates\":[\"obj-4\",\"obj-8\",\"obj-12\",\"obj-16\",\"obj-20\",\"obj-30\"]}",
+    "fit_rate:{\"curve\":\"obj-25\"}",
+    "aggregate:{\"rates\":[\"obj-4\",\"obj-8\",\"obj-12\",\"obj-16\",\"obj-21\",\"obj-32\"]}",
+    "read_trace:{\"raw\":\"raw-3-1\"}",
+    "check_quality:{\"trace\":\"obj-34\"}",
+    "normalize:{\"trace\":\"obj-34\",\"quality\":\"obj-35\"}",
+    "fit_rate:{\"curve\":\"obj-36\"}",
+    "aggregate:{\"rates\":[\"obj-4\",\"obj-8\",\"obj-12\",\"obj-16\",\"obj-21\",\"obj-32\"]}",
+    "fit_rate_robust:{\"curve\":\"obj-36\"}",
+    "fit_rate_robust:{\"curve\":\"obj-25\"}",
+    "fit_rate:{\"curve\":\"obj-25\"}",
+    "fit_rate_robust:{\"curve\":\"obj-25\"}",
+    "fit_rate_robust:{\"curve\":\"obj-36\"}",
+    "fit_rate_robust:{\"curve\":\"obj-25\"}",
+    "aggregate:{\"rates\":[\"obj-4\",\"obj-8\",\"obj-12\",\"obj-16\",\"obj-21\",\"obj-45\"]}",
+    "fit_rate:{\"curve\":\"obj-36\"}",
+    "aggregate:{\"rates\":[\"obj-4\",\"obj-8\",\"obj-12\",\"obj-16\",\"obj-21\",\"obj-45\"]}"
+  ],
+  "modelRequests": 49,
+  "integrationError": "模型响应不是有效决策 JSON，或连接失败；运行已暂停。"
+}

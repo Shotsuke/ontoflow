@@ -1,0 +1,16 @@
+{
+  "name": "ontoflow-lab",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "node --test tests/*.test.mjs",
+    "start": "node server.mjs",
+    "live": "node scripts/run-live.mjs"
+  },
+  "description": "Ontology-constrained LLM tool orchestration over synthetic scientific objects",
+  "engines": {
+    "node": ">=24"
+  }
+}

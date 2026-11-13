@@ -1,0 +1,54 @@
+{
+  "date": "2026-11-13",
+  "interpretation": "Engineering integration attempts with changing context and model configurations; not controlled benchmarks or ablations.",
+  "runs": [
+    {
+      "model": "qwen-plus",
+      "status": "paused",
+      "requests": 60,
+      "calls": 51,
+      "blocked": 9,
+      "unknown": 0,
+      "depth": 4,
+      "completed": false,
+      "error": "Reached integration limit of 60 decisions",
+      "file": "run-01-qwen-plus.json"
+    },
+    {
+      "model": "qwen-plus",
+      "status": "paused",
+      "requests": 49,
+      "calls": 46,
+      "blocked": 2,
+      "unknown": 0,
+      "depth": 6,
+      "completed": false,
+      "error": "模型响应不是有效决策 JSON，或连接失败；运行已暂停。",
+      "file": "run-02-qwen-plus.json"
+    },
+    {
+      "model": "qwen-plus",
+      "status": "paused",
+      "requests": 60,
+      "calls": 46,
+      "blocked": 14,
+      "unknown": 0,
+      "depth": 7,
+      "completed": false,
+      "error": "Reached integration limit of 60 decisions",
+      "file": "run-03-qwen-plus.json"
+    },
+    {
+      "model": "qwen3.6-plus",
+      "status": "completed",
+      "requests": 39,
+      "calls": 37,
+      "blocked": 2,
+      "unknown": 0,
+      "depth": 9,
+      "completed": true,
+      "error": null,
+      "file": "run-04-qwen3.6-plus.json"
+    }
+  ]
+}
